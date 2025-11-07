@@ -33,7 +33,7 @@ A Google Apps Script integration that combines **Canvas LMS** with **Claude AI**
 
 - **Google Account** with access to Google Sheets and Google Apps Script
 - **Canvas LMS Account** with instructor access
-- **Canvas API Token** ([How to generate](https://community.canvaslms.com/t5/Admin-Guide/How-do-I-manage-API-access-tokens-as-an-admin/ta-p/89))
+- **Canvas API Token** ([How to generate](https://www.jlouisbru.com/guide-to-canvas-api/))
 - **Claude API Key** from [Anthropic](https://console.anthropic.com/)
 - **Canvas Course** with a quiz assignment containing essay questions
 
