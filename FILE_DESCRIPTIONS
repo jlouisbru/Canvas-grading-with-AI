@@ -1,0 +1,395 @@
+# File Descriptions - Canvas Grading with AI
+
+This document explains the purpose and key functions of each file in the repository.
+
+## 📚 Documentation Files
+
+### README.md
+**Purpose**: Main project documentation and entry point for users  
+**Contains**:
+- Feature overview
+- Quick start guide
+- Usage instructions
+- Links to detailed documentation
+
+### SETUP.md
+**Purpose**: Comprehensive step-by-step setup instructions  
+**Contains**:
+- Prerequisites
+- API key generation guides
+- Google Apps Script installation
+- Configuration steps
+- Troubleshooting guide
+
+### SECURITY.md
+**Purpose**: Security best practices and vulnerability reporting  
+**Contains**:
+- API key management guidelines
+- Access control recommendations
+- Data protection strategies
+- FERPA compliance information
+- Security checklist
+
+### CONTRIBUTING.md
+**Purpose**: Guidelines for contributing to the project  
+**Contains**:
+- Bug reporting template
+- Feature request guidelines
+- Development process
+- Code style guidelines
+- Pull request procedures
+
+### CODE_OF_CONDUCT.md
+**Purpose**: Community standards and expectations  
+**Contains**:
+- Expected behavior
+- Unacceptable behavior
+- Enforcement procedures
+- Contact information
+
+### LICENSE
+**Purpose**: MIT License for source code  
+**Type**: Permissive open-source license  
+**Allows**: Use, modification, distribution, commercial use
+
+### LICENSE-DOCS.md
+**Purpose**: CC BY-SA 4.0 License for documentation  
+**Type**: Creative Commons Attribution-ShareAlike  
+**Requires**: Attribution and share-alike
+
+### PUBLICATION_CHECKLIST.md
+**Purpose**: Guide for publishing the repository  
+**Contains**:
+- Upload instructions
+- Enhancement recommendations
+- Marketing strategies
+- Maintenance guidelines
+
+---
+
+## 💻 Source Code Files (.gs)
+
+### Constants.gs (9 lines)
+**Purpose**: Central configuration constants  
+**Key Contents**:
+- `DEFAULT_CANVAS_BASE_URL` - Canvas institution URL
+- `DEFAULT_CLAUDE_API_ENDPOINT` - Claude API endpoint
+- `DEFAULT_CLAUDE_GRADING_MODEL` - Default AI model for grading
+- `DEFAULT_CLAUDE_COMMENTING_MODEL` - Default AI model for comments
+- `MAX_RUBRIC_CRITERIA` - Maximum rubric criteria (4)
+
+**When to Modify**: To change default settings for your institution
+
+---
+
+### Toast.gs (~10 lines)
+**Purpose**: Display toast notifications to users  
+**Key Function**:
+- `showToast_(message, title, timeoutSeconds)` - Shows temporary notification
+
+**Usage**: Provides user feedback during operations (e.g., "Fetching data...", "Grading complete!")
+
+---
+
+### ConfigHelpers.gs (~80 lines)
+**Purpose**: Configuration and settings management  
+**Key Functions**:
+- `getConfigFromSheet_()` - Reads configuration from "Settings" sheet
+- `getSetting_(settingName, defaultValue)` - Gets setting with fallback to default
+- `validateConfig_(config)` - Validates configuration completeness
+
+**Data Managed**:
+- Canvas URL, Course ID, Assignment ID
+- API endpoints
+- Model selections
+
+---
+
+### APIKeyHelpers.gs (~100 lines)
+**Purpose**: Secure API key management  
+**Key Functions**:
+- `getCanvasApiKey_()` - Retrieves or prompts for Canvas API token
+- `getClaudeApiKey_()` - Retrieves or prompts for Claude API key
+- `storeApiKey_(keyName, keyValue)` - Securely stores API key in Script Properties
+- `deleteApiKey_(keyName)` - Removes stored API key
+
+**Security**: Uses Google Apps Script Properties Service (encrypted storage)
+
+---
+
+### CanvasAPIHelpers.gs (~500 lines)
+**Purpose**: Canvas LMS API integration  
+**Key Functions**:
+- `fetchCanvasAPI_(endpoint, canvasApiKey, config, method)` - Generic Canvas API caller
+- `getQuizIdFromAssignment_(canvasApiKey, config)` - Gets quiz ID from assignment
+- `getEssayQuestions_(canvasApiKey, config, quizId)` - Fetches essay questions
+- `getRubricForAssignment_(canvasApiKey, config)` - Fetches rubric data
+- `getQuizSubmissions_(canvasApiKey, config, quizId)` - Gets student submissions
+- `uploadGradeToCanvas_(...)` - Uploads single grade to Canvas
+- `uploadCommentToCanvas_(...)` - Uploads single comment to Canvas
+
+**Handles**: All communication with Canvas LMS API
+
+---
+
+### ClaudeAPIHelpers.gs (~280 lines)
+**Purpose**: Claude AI API integration  
+**Key Functions**:
+- `callClaudeAPIMessages_(payload, apiKey, callingFunctionName)` - Generic Claude API caller
+- `getGenerosityPromptSegment_(generosityLevel)` - Generates generosity instructions
+- `callClaudeAPIForGrading_(...)` - Grades using overall answer key
+- `callClaudeAPIForRubricGrade_(...)` - Grades using rubric
+- `callClaudeAPIForComment_(...)` - Generates feedback comment
+- `callClaudeAPIForRubricComment_(...)` - Generates rubric-based comment
+
+**Generosity Levels**:
+1. Very Strict - Exact match required
+2. Strict - Close alignment needed
+3. Normal - Balanced evaluation (default)
+4. Generous - Focus on main concepts
+5. Very Generous - Significant benefit of doubt
+
+---
+
+### SheetUtilities.gs (~300 lines)
+**Purpose**: Google Sheets manipulation utilities and menu setup  
+**Key Functions**:
+- `onOpen()` - Creates three custom menus (Canvas Tools, Grading Tools, Sheet Tools)
+- `getHeaderValues_(sheet)` - Reads header row
+- `findColumnIndex_(headerValues, searchTerm)` - Locates column by header
+- `createMainSheetHeaders_(sheet, questionMap, orderedQIds)` - Creates data sheet headers
+- `clearRangeIfExists_(sheet, startRow, startCol, numRows, numCols)` - Safe range clearing
+- `clearGradesAndOrComments()` - Menu function to clear grades/comments
+- `setupSettingsSheet_()` - Menu function to create/verify Settings sheet
+
+**Usage**: Low-level sheet operations used by other modules + menu system setup
+
+---
+
+### SheetProcessingHelpers.gs (~350 lines)
+**Purpose**: Sheet data processing and parsing  
+**Key Functions**:
+- `parseMainSheetHeaders_(sheet)` - Analyzes main sheet structure
+- `parseAnswersSheetData_(answersSheet)` - Reads answer keys and rubrics
+- `matchStudentToCanvas_(...)` - Matches students to Canvas IDs
+
+**Data Structures**:
+- `questionColumnsMap` - Maps question IDs to column indices
+- `answerKeyDataMap` - Stores answer keys and prompts
+- `rubricDataMap` - Stores rubric criteria
+
+---
+
+### AIOperationContext.gs (~150 lines)
+**Purpose**: Initialize context for AI operations  
+**Key Function**:
+- `initializeAIOperationContext_(mainSheet, needsRubricData, needsAnswerKeyData)` - Sets up all required data for AI operations
+
+**Returns**: Context object containing:
+- UI reference
+- API keys
+- Sheet header information
+- Answer key data (if requested)
+- Rubric data (if requested)
+
+**Usage**: Called at start of each AI operation to gather all necessary data
+
+---
+
+### FetchData.gs (~365 lines)
+**Purpose**: Fetch data from Canvas LMS  
+**Key Functions**:
+- `fetchAndPopulateQuestionPrompts()` - Imports questions and rubrics from Canvas
+- `fetchAndPopulateQuizResponses()` - Downloads student answers from Canvas
+
+**Menu Items**:
+- Canvas Tools → Fetch Question Prompts to "Answers" Sheet
+- Canvas Tools → Fetch Essay Quiz Responses (Main Sheet)
+
+**Updates**:
+- "Answers" sheet with questions (Col A), prompts (Col B), answer keys (Col C - manual entry), max points (Col D), rubrics (Cols E+)
+- Main sheet with student names (sortable), Canvas User IDs, question columns with answers, grade columns, comment columns
+
+---
+
+### GradingTools.gs (~370 lines)
+**Purpose**: AI-powered grading and feedback generation  
+**Key Functions**:
+- `autoGradeWithClaude()` - Grade using overall answer keys (Column C in Answers sheet)
+- `generateAIComments()` - Generate feedback using answer keys for non-full-score submissions
+- `aiRubricGrade()` - Grade using Canvas rubrics (Columns E+ in Answers sheet)
+- `aiRubricComment()` - Generate feedback using rubrics for non-full-score submissions
+- `getGradingGenerosityLevel_(ui)` - Prompts for strictness level (1-5 scale)
+- `getIncludeAnswerKeyChoice_(ui, feedbackType)` - Prompts whether to include answer key in feedback
+
+**Menu Items**:
+- Grading Tools → Grade without Rubric (using Claude.ai)
+- Grading Tools → Give Feedback without Rubric (using Claude.ai)
+- Grading Tools → Grade with Rubric (using Claude.ai)
+- Grading Tools → Give Feedback with Rubric (using Claude.ai)
+
+**Features**:
+- Customizable generosity (1-5): 1=Very Strict, 3=Normal, 5=Very Generous
+- Optional answer key inclusion in feedback
+- Only processes empty grade/comment cells (preserves existing work)
+- Progress tracking with toast notifications
+
+---
+
+### UploadData.gs (~200 lines)
+**Purpose**: Upload grades and comments to Canvas  
+**Key Functions**:
+- `uploadEssayGradesToCanvas()` - Uploads all grades and comments from main sheet
+
+**Menu Items**:
+- Canvas Tools → Upload Essay Grades & Comments to Canvas
+
+**Process**:
+1. Reads grades/comments from main sheet
+2. Matches students to Canvas IDs (by Canvas User ID column)
+3. Uploads via Canvas API for each student/question combination
+4. Provides summary of results (successful/failed uploads)
+
+**Note**: This single function handles uploading both grades and comments together. It processes all non-empty grade and comment cells from the main sheet.
+
+---
+
+### SheetUtilities.gs (~300 lines)
+**Purpose**: Google Sheets manipulation utilities and menu setup  
+**Key Functions**:
+- `onOpen()` - Creates three custom menus when spreadsheet opens
+- `getHeaderValues_(sheet)` - Reads header row
+- `findColumnIndex_(headerValues, searchTerm)` - Locates column by header
+- `createMainSheetHeaders_(sheet, questionMap, orderedQIds)` - Creates data sheet headers
+- `clearRangeIfExists_(sheet, startRow, startCol, numRows, numCols)` - Safe range clearing
+- `clearGradesAndOrComments()` - Clears grades and/or comments from main sheet (menu item)
+- `setupSettingsSheet_()` - Creates or verifies Settings sheet (menu item)
+
+**Menu Items**:
+- Sheet Tools → Clear Grades/Comments on Main Sheet
+- Sheet Tools → Setup/Verify "Settings" Sheet
+
+**Menu Structure Created**:
+1. **Canvas Tools**: Data import/export to Canvas
+2. **Grading Tools**: AI-powered grading and feedback
+3. **Sheet Tools**: Spreadsheet management utilities
+
+---
+
+## 🔄 File Dependencies
+
+### Dependency Flow
+```
+Constants.gs
+  ↓
+ConfigHelpers.gs → APIKeyHelpers.gs
+  ↓                      ↓
+SheetUtilities.gs    CanvasAPIHelpers.gs
+  ↓                      ↓
+SheetProcessingHelpers.gs
+  ↓                      
+AIOperationContext.gs → ClaudeAPIHelpers.gs
+  ↓                      ↓
+FetchData.gs, GradingTools.gs, UploadData.gs
+  ↓
+Toast.gs (used throughout for notifications)
+```
+
+### Loading Order
+Google Apps Script loads files alphabetically, but since we use function calls (not global execution), order doesn't matter for this project.
+
+---
+
+## 📊 Code Statistics
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| Constants.gs | ~10 | Configuration constants |
+| Toast.gs | ~10 | Toast notifications |
+| ConfigHelpers.gs | ~80 | Settings management |
+| APIKeyHelpers.gs | ~100 | API key management |
+| SheetUtilities.gs | ~300 | Sheet manipulation |
+| SheetProcessingHelpers.gs | ~350 | Data processing |
+| AIOperationContext.gs | ~150 | Context initialization |
+| CanvasAPIHelpers.gs | ~500 | Canvas API integration |
+| ClaudeAPIHelpers.gs | ~280 | Claude AI integration |
+| FetchData.gs | ~365 | Canvas data fetching |
+| GradingTools.gs | ~370 | AI grading & commenting |
+| UploadData.gs | ~200 | Canvas uploads |
+| **TOTAL** | **~2,700** | **Complete system** |
+
+---
+
+## 🎯 Key Design Patterns
+
+### 1. Separation of Concerns
+- API helpers handle external communication
+- Sheet utilities handle Google Sheets operations
+- Grading tools orchestrate the grading process
+- Each file has a single, clear responsibility
+
+### 2. Configuration Management
+- Settings sheet overrides code constants
+- Flexible per-spreadsheet configuration
+- No code modification needed for basic setup
+
+### 3. Error Handling
+- Try-catch blocks in API calls
+- User-friendly error messages
+- Detailed logging for debugging
+
+### 4. Security First
+- API keys in Script Properties (encrypted)
+- Never exposed in sheets or logs
+- Secure prompt dialogs for key entry
+
+### 5. User Experience
+- Toast notifications for progress
+- Confirmation dialogs before operations
+- Clear menu organization
+- Detailed error messages
+
+---
+
+## 🔧 Extending the Code
+
+### Adding New Features
+
+1. **New AI Operation**:
+   - Add function to `GradingTools.gs`
+   - Use `initializeAIOperationContext_()` for setup
+   - Call appropriate Claude API helper
+   - Add menu item in main menu setup
+
+2. **New Canvas Integration**:
+   - Add function to `CanvasAPIHelpers.gs`
+   - Follow existing API call patterns
+   - Add error handling
+   - Update `FetchData.gs` or `UploadData.gs` as needed
+
+3. **New Configuration Option**:
+   - Add constant to `Constants.gs`
+   - Add to Settings sheet documentation
+   - Update `ConfigHelpers.gs` if needed
+
+### Testing Changes
+
+1. Create a test Google Spreadsheet
+2. Use a small test dataset
+3. Check execution logs (Apps Script → Executions)
+4. Test error conditions
+5. Verify API rate limits
+
+---
+
+## 📞 Getting Help
+
+- **General Questions**: GitHub Issues
+- **Bug Reports**: Use issue template in CONTRIBUTING.md
+- **Feature Requests**: Open GitHub Discussion
+- **Security Issues**: See SECURITY.md for reporting
+
+---
+
+**Last Updated**: November 2025  
+**Maintainer**: Jean-Louis Bru ([jlouisbru.com](https://www.jlouisbru.com/))
