@@ -53,7 +53,7 @@ A Google Apps Script integration that combines **Canvas LMS** with **Claude AI**
 ### 2. Refresh and Check Menu
 
 1. **Close and reopen** your copied spreadsheet (or refresh the page)
-2. You should see new menus: **Canvas Tools**, **Grading Tools**, and **Sheet Tools**
+2. You should see three new menus: **Canvas Tools**, **Grading Tools**, and **Sheet Tools**
 3. If not visible, wait 30 seconds and refresh again
 
 ### 3. Configure Settings
@@ -100,41 +100,107 @@ For comprehensive step-by-step instructions, see [SETUP.md](SETUP.md).
 
 ### Workflow Overview
 
-1. **Fetch Question Prompts**: Import questions from Canvas
-2. **Add Answer Keys**: Manually enter ideal answers in the "Answers" sheet
-3. **Fetch Student Submissions**: Download student responses
-4. **Grade with AI**: Use Claude to automatically grade submissions
-5. **Generate Comments**: Create AI-powered feedback
-6. **Upload to Canvas**: Push grades and comments back to Canvas
+1. **Fetch Question Prompts**: Import question text and rubrics from Canvas to "Answers" sheet
+2. **Fetch Student Submissions**: Download student names and essay responses to main sheet
+3. **Add Answer Keys**: Manually enter ideal answers in Column C of "Answers" sheet
+4. **Grade with AI**: Use Claude to automatically grade submissions based on answer keys or rubrics
+5. **Generate Comments**: Create AI-powered feedback for students
+6. **Upload to Canvas**: Push grades and comments back to Canvas LMS
 
 ### Menu Options
 
-#### Canvas Tools > Fetch Essay Quiz Responses (Main Sheet)
-- **Fetch Question Prompts**: Import questions, rubrics, and max points from Canvas
-- **Fetch Student Submissions**: Download all student answers for the assignment
+Your spreadsheet provides three organized menus:
 
-#### Canvas AI Grading > AI Grading
-- **Auto-Grade with Claude (Answer Key)**: Grade using overall answer keys with customizable strictness
-- **AI Rubric-Based Grading**: Grade using Canvas rubric criteria
+#### 📊 Canvas Tools (Data Import/Export)
 
-#### Canvas AI Grading > AI Commenting
-- **Generate AI Comments (Answer Key)**: Create feedback based on answer keys
-- **AI Rubric-Based Comments**: Generate feedback aligned with rubric criteria
+**Fetch Essay Quiz Responses (Main Sheet)**
+- Imports student submissions from Canvas quiz to your main data sheet
+- Creates columns for each essay question with student answers
+- Includes columns for grades and comments
+- Automatically matches students by Canvas User ID
+- Only fetches responses not already present (avoids duplicates)
 
-#### Canvas AI Grading > Upload to Canvas
-- **Upload Grades to Canvas**: Push all grades back to Canvas
-- **Upload Comments to Canvas**: Push all feedback comments to Canvas
-- **Upload Both Grades and Comments**: Combined upload operation
+**Fetch Question Prompts to "Answers" Sheet**
+- Retrieves question text, rubrics, and max points from Canvas
+- Populates the "Answers" sheet with:
+  - Column A: Question ID and title
+  - Column B: Full question prompt
+  - Column C: Overall answer key (for you to fill in manually)
+  - Column D: Maximum points
+  - Columns E+: Rubric criteria (description and points)
+- Preserves any answer keys you've already entered
+
+**Upload Essay Grades & Comments to Canvas**
+- Uploads all grades and comments from main sheet back to Canvas
+- Matches students by Canvas User ID
+- Updates Canvas gradebook automatically
+- Provides summary of successful/failed uploads
+- Can handle both grades-only, comments-only, or both
+
+---
+
+#### 🤖 Grading Tools (AI-Powered Assessment)
+
+**Grade without Rubric (using Claude.ai)**
+- Grades student essays using Claude AI based on overall answer keys (Column C in "Answers" sheet)
+- Prompts you to select grading strictness (1-5 scale):
+  - 1 = Very Strict (exact match required)
+  - 3 = Normal/Balanced (default)
+  - 5 = Very Generous (main concepts suffice)
+- Only grades essays that don't have a grade yet (empty grade cells)
+- Compares student answer against your answer key
+- Assigns numerical score based on alignment with key
+
+**Give Feedback without Rubric (using Claude.ai)**
+- Generates personalized AI feedback for essays that didn't receive full points
+- Uses overall answer keys from Column C of "Answers" sheet
+- Prompts you to choose whether to include answer key in the feedback comment
+- Only generates comments for students who received less than full points
+- Creates constructive feedback explaining what was missed
+
+**Grade with Rubric (using Claude.ai)**
+- Grades using Canvas rubric criteria (from Columns E+ in "Answers" sheet)
+- Prompts for grading strictness level (1-5)
+- Evaluates student answer against each rubric criterion
+- Assigns points based on rubric alignment
+- More detailed than answer-key grading
+
+**Give Feedback with Rubric (using Claude.ai)**
+- Generates detailed feedback based on Canvas rubric criteria
+- Explains performance on each rubric criterion
+- Option to include overall answer key in feedback
+- Only creates comments for non-full-score submissions
+- Provides specific guidance on what to improve
+
+---
+
+#### 🛠️ Sheet Tools (Spreadsheet Management)
+
+**Clear Grades/Comments on Main Sheet**
+- Clears grades and/or comments from main data sheet
+- Prompts you to choose: clear GRADES, COMMENTS, or BOTH
+- Useful for re-grading or testing
+- Does not affect student names or answers
+- Cannot be undone (use with caution)
+
+**Setup/Verify "Settings" Sheet**
+- Creates or verifies the "Settings" sheet with default values
+- Adds configuration rows with descriptions
+- Useful if Settings sheet is accidentally deleted
+- Pre-fills default Canvas URL and API endpoints
+- Ensures all required settings are present
 
 ### Grading Generosity Levels
 
-When grading, you can choose from 5 strictness levels:
+When using AI grading features, you can choose from 5 strictness levels:
 
-1. **Very Strict**: Exact match required, minimal partial credit
-2. **Strict**: Close alignment needed, very minor flexibility
-3. **Normal/Balanced**: Fair evaluation with proportionate partial credit
-4. **Generous**: Main concepts matter, more partial credit awarded
-5. **Very Generous**: Significant benefit of doubt, focus on correct elements
+| Level | Name | Behavior | When to Use |
+|-------|------|----------|-------------|
+| **1** | Very Strict | Exact match to key/rubric required, minimal partial credit | Precise answer needed (e.g., definitions, formulas) |
+| **2** | Strict | Close alignment needed, very minor flexibility | Most factual questions |
+| **3** | Normal/Balanced | Fair evaluation with proportionate partial credit | Default for most assignments |
+| **4** | Generous | Main concepts matter, more partial credit awarded | Complex essays where approach varies |
+| **5** | Very Generous | Significant benefit of doubt, focus on correct elements | Formative assessments, learning-focused |
 
 ## 🔒 Security & Privacy
 
@@ -163,9 +229,10 @@ See [SECURITY.md](SECURITY.md) for detailed security best practices.
 - `MAX_RUBRIC_CRITERIA`: Maximum rubric criteria supported (default: 4)
 
 ### Settings Sheet Override
-Create a "Settings" sheet to override defaults without modifying code:
+The "Settings" sheet overrides defaults without modifying code:
 - Settings in the sheet take precedence over constants
 - Allows per-spreadsheet customization
+- Use Sheet Tools > Setup/Verify "Settings" Sheet to create/verify
 
 ## 📚 File Structure
 
@@ -181,13 +248,14 @@ Canvas-grading-with-AI/
 ├── FILE_DESCRIPTIONS.md            # Detailed explanation of each file
 │
 └── src/                            # Google Apps Script source code
+    ├── README.md                   # Source code overview
     ├── Constants.gs                # Configuration constants
     ├── Toast.gs                    # Toast notification helper
     ├── ConfigHelpers.gs            # Configuration utilities
     ├── APIKeyHelpers.gs            # API key management
     ├── CanvasAPIHelpers.gs         # Canvas API integration
     ├── ClaudeAPIHelpers.gs         # Claude AI integration
-    ├── SheetUtilities.gs           # Sheet manipulation utilities
+    ├── SheetUtilities.gs           # Sheet manipulation & menu setup
     ├── SheetProcessingHelpers.gs   # Data processing helpers
     ├── AIOperationContext.gs       # AI operation context management
     ├── FetchData.gs                # Canvas data fetching functions
@@ -245,13 +313,15 @@ If you find this tool helpful, please:
 
 ## 📊 Changelog
 
-### Current Version
+### Current Version (v1.0.0)
 - Initial public release
-- Support for essay question grading
+- Three-menu system for organized workflow
+- Essay question grading support
 - Rubric-based grading and commenting
 - Answer key-based grading and commenting
 - Generosity level controls (1-5 scale)
 - Full Canvas integration (fetch questions, submissions, upload results)
+- Sheet management tools (clear data, setup settings)
 
 ---
 
