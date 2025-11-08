@@ -109,7 +109,7 @@ For comprehensive step-by-step instructions, see [SETUP.md](SETUP.md).
 
 ### Menu Options
 
-#### Canvas AI Grading > Fetch Data
+#### Canvas Tools > Fetch Essay Quiz Responses (Main Sheet)
 - **Fetch Question Prompts**: Import questions, rubrics, and max points from Canvas
 - **Fetch Student Submissions**: Download all student answers for the assignment
 
