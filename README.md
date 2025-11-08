@@ -33,67 +33,47 @@ A Google Apps Script integration that combines **Canvas LMS** with **Claude AI**
 
 - **Google Account** with access to Google Sheets and Google Apps Script
 - **Canvas LMS Account** with instructor access
-- **Canvas API Token** ([How to generate](https://www.jlouisbru.com/guide-to-canvas-api/))
+- **Canvas API Token** ([How to generate](https://community.canvaslms.com/t5/Admin-Guide/How-do-I-manage-API-access-tokens-as-an-admin/ta-p/89))
 - **Claude API Key** from [Anthropic](https://console.anthropic.com/)
 - **Canvas Course** with a quiz assignment containing essay questions
 
 ## 🚀 Quick Start
 
-### 1. Create a New Google Spreadsheet
+### 1. Copy the Template Spreadsheet
 
-Go to [Google Sheets](https://sheets.google.com) and create a new spreadsheet.
+**This is the easiest way to get started!** All the code is already included.
 
-### 2. Open Apps Script Editor
+1. **Open the template**: [Canvas AI Grading Template](https://docs.google.com/spreadsheets/d/1e2AKNNvqC4knz_jcwL0FVTWHY3bmk1ll9-cL0XQGIeY/edit?usp=sharing)
+2. **Make a copy**: Click **File** → **Make a copy**
+3. **Name your copy**: e.g., "Canvas AI Grading - [Your Course Name]"
+4. **Save to your Drive**: Choose a location and click **Make a copy**
 
-- Click **Extensions** > **Apps Script**
-- You'll see a default `Code.gs` file
+✨ **That's it!** All the Google Apps Script code is automatically included in your copy.
 
-### 3. Add the Script Files
+### 2. Refresh and Check Menu
 
-For each `.gs` file in this repository:
-1. Click the **+** next to "Files" in Apps Script
-2. Select **Script**
-3. Name it exactly as shown (e.g., `GradingTools`)
-4. Copy and paste the code from the corresponding file
+1. **Close and reopen** your copied spreadsheet (or refresh the page)
+2. You should see a new menu: **Canvas AI Grading**
+3. If not visible, wait 30 seconds and refresh again
 
-**Files to add** (in any order):
-- `Constants.gs`
-- `Toast.gs`
-- `ConfigHelpers.gs`
-- `APIKeyHelpers.gs`
-- `CanvasAPIHelpers.gs`
-- `ClaudeAPIHelpers.gs`
-- `SheetUtilities.gs`
-- `SheetProcessingHelpers.gs`
-- `AIOperationContext.gs`
-- `FetchData.gs`
-- `GradingTools.gs`
-- `UploadData.gs`
+### 3. Configure Settings
 
-### 4. Save and Refresh
+Your copied spreadsheet already has a **"Settings"** sheet. Update these values:
 
-1. Click **Save project** (💾 icon)
-2. Close the Apps Script editor
-3. Refresh your Google Spreadsheet
-4. You should see a new menu: **Canvas AI Grading**
+| Setting Name | Value | Description |
+|--------------|-------|-------------|
+| CANVAS_BASE_URL | `https://canvas.yourinstitution.edu` | Your institution's Canvas URL |
+| COURSE_ID | Your Canvas course ID | Find in Canvas URL |
+| ASSIGNMENT_ID | Your Canvas assignment ID | Find in Canvas URL |
 
-### 5. Configure Settings
+The following settings are already configured with defaults (you can customize if needed):
+- **CLAUDE_API_ENDPOINT**: `https://api.anthropic.com/v1/messages`
+- **CLAUDE_GRADING_MODEL**: `claude-3-haiku-20240307`
+- **CLAUDE_COMMENTING_MODEL**: `claude-3-haiku-20240307`
 
-1. In your spreadsheet, create a sheet named **"Settings"**
-2. Add the following configuration:
+**Note**: The "Answers" sheet will be auto-populated when you fetch questions from Canvas.
 
-| Setting Name | Value |
-|--------------|-------|
-| CANVAS_BASE_URL | `https://canvas.yourinstitution.edu` |
-| COURSE_ID | Your Canvas course ID |
-| ASSIGNMENT_ID | Your Canvas assignment ID |
-| CLAUDE_API_ENDPOINT | `https://api.anthropic.com/v1/messages` |
-| CLAUDE_GRADING_MODEL | `claude-3-haiku-20240307` |
-| CLAUDE_COMMENTING_MODEL | `claude-3-haiku-20240307` |
-
-3. Create a sheet named **"Answers"** (will be auto-populated with question data)
-
-### 6. Set Up API Keys
+### 4. Set Up API Keys
 
 When you first use a feature:
 - You'll be prompted to enter your **Canvas API Token**
@@ -103,6 +83,18 @@ When you first use a feature:
 ## 📖 Detailed Setup Guide
 
 For comprehensive step-by-step instructions, see [SETUP.md](SETUP.md).
+
+### Alternative: Manual Installation
+
+**For advanced users** who prefer to manually set up the scripts:
+
+1. Create a new Google Spreadsheet
+2. Open **Extensions** → **Apps Script**
+3. Copy each `.gs` file from the [`/src/`](src/) folder in this repository
+4. Create corresponding script files in Apps Script
+5. Follow the configuration steps in [SETUP.md](SETUP.md)
+
+**Note**: The template method (above) is much easier and recommended for most users!
 
 ## 🎯 Usage
 
@@ -185,18 +177,22 @@ Canvas-grading-with-AI/
 ├── CONTRIBUTING.md                 # Contribution guidelines
 ├── CODE_OF_CONDUCT.md              # Community guidelines
 ├── LICENSE                         # MIT License
-├── Constants.gs                    # Configuration constants
-├── Toast.gs                        # Toast notification helper
-├── ConfigHelpers.gs                # Configuration utilities
-├── APIKeyHelpers.gs                # API key management
-├── CanvasAPIHelpers.gs             # Canvas API integration
-├── ClaudeAPIHelpers.gs             # Claude AI integration
-├── SheetUtilities.gs               # Sheet manipulation utilities
-├── SheetProcessingHelpers.gs       # Data processing helpers
-├── AIOperationContext.gs           # AI operation context management
-├── FetchData.gs                    # Canvas data fetching functions
-├── GradingTools.gs                 # AI grading functions
-└── UploadData.gs                   # Canvas upload functions
+├── LICENSE-DOCS.md                 # CC BY-SA 4.0 for documentation
+├── FILE_DESCRIPTIONS.md            # Detailed explanation of each file
+│
+└── src/                            # Google Apps Script source code
+    ├── Constants.gs                # Configuration constants
+    ├── Toast.gs                    # Toast notification helper
+    ├── ConfigHelpers.gs            # Configuration utilities
+    ├── APIKeyHelpers.gs            # API key management
+    ├── CanvasAPIHelpers.gs         # Canvas API integration
+    ├── ClaudeAPIHelpers.gs         # Claude AI integration
+    ├── SheetUtilities.gs           # Sheet manipulation utilities
+    ├── SheetProcessingHelpers.gs   # Data processing helpers
+    ├── AIOperationContext.gs       # AI operation context management
+    ├── FetchData.gs                # Canvas data fetching functions
+    ├── GradingTools.gs             # AI grading functions
+    └── UploadData.gs               # Canvas upload functions
 ```
 
 ## 🤝 Contributing
