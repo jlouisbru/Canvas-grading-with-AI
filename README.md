@@ -33,7 +33,7 @@ A Google Apps Script integration that combines **Canvas LMS** with **Claude AI**
 
 - **Google Account** with access to Google Sheets and Google Apps Script
 - **Canvas LMS Account** with instructor access
-- **Canvas API Token** ([How to generate](https://community.canvaslms.com/t5/Admin-Guide/How-do-I-manage-API-access-tokens-as-an-admin/ta-p/89))
+- **Canvas API Token** ([How to generate](https://www.jlouisbru.com/guide-to-canvas-api/))
 - **Claude API Key** from [Anthropic](https://console.anthropic.com/)
 - **Canvas Course** with a quiz assignment containing essay questions
 
@@ -43,7 +43,7 @@ A Google Apps Script integration that combines **Canvas LMS** with **Claude AI**
 
 **This is the easiest way to get started!** All the code is already included.
 
-1. **Open the template**: [Canvas AI Grading Template](https://docs.google.com/spreadsheets/d/1e2AKNNvqC4knz_jcwL0FVTWHY3bmk1ll9-cL0XQGIeY/edit?usp=sharing)
+1. **Open the template**: [Canvas Grading with AI Template](https://docs.google.com/spreadsheets/d/1e2AKNNvqC4knz_jcwL0FVTWHY3bmk1ll9-cL0XQGIeY/edit?usp=sharing)
 2. **Make a copy**: Click **File** → **Make a copy**
 3. **Name your copy**: e.g., "Canvas AI Grading - [Your Course Name]"
 4. **Save to your Drive**: Choose a location and click **Make a copy**
@@ -53,7 +53,7 @@ A Google Apps Script integration that combines **Canvas LMS** with **Claude AI**
 ### 2. Refresh and Check Menu
 
 1. **Close and reopen** your copied spreadsheet (or refresh the page)
-2. You should see a new menu: **Canvas AI Grading**
+2. You should see new menus: **Canvas Tools**, **Grading Tools**, and **Sheet Tools**
 3. If not visible, wait 30 seconds and refresh again
 
 ### 3. Configure Settings
