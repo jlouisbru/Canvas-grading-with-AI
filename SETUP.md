@@ -118,9 +118,9 @@ Before starting, gather:
 
 ### Step 3: Verify Installation
 
-1. **Check for the menu**:
-   - Look for **Canvas AI Grading** in the menu bar
-   - If you don't see it, close the spreadsheet and reopen it
+1. **Check for the menus**:
+   - Look for **Canvas Tools**, **Grading Tools**, and **Sheet Tools** in the menu bar
+   - If you don't see them, close the spreadsheet and reopen it
    - Or wait 30 seconds and refresh the page
 
 2. **Verify sheets**:
@@ -329,8 +329,8 @@ When you first use any AI grading feature, you'll need to authorize the script a
 ### Step 1: Grant Script Permissions
 
 1. **Trigger authorization**:
-   - Click **Canvas AI Grading** in the menu
-   - Select any option (e.g., "Fetch Data" → "Fetch Question Prompts")
+   - Click **Canvas Tools** in the menu
+   - Select any option (e.g., "Fetch Question Prompts to 'Answers' Sheet")
 
 2. **Authorization dialog appears**:
    - You'll see: "Authorization Required"
@@ -374,11 +374,15 @@ When you first use any AI grading feature, you'll need to authorize the script a
 
 ### Test 1: Fetch Question Prompts
 
-1. Click **Canvas AI Grading** → **Fetch Data** → **Fetch Question Prompts**
-2. Wait for processing
-3. Check the **Answers** sheet
-   - Should populate with question data
-   - Columns: Question ID, Prompt, Answer Key (empty), Max Points, Rubric Criteria
+1. Click **Canvas Tools** → **Fetch Question Prompts to "Answers" Sheet**
+2. Enter your Canvas API token when prompted (first time only)
+3. Wait for processing
+4. Check the **Answers** sheet - it should populate with:
+   - Column A: Question ID & Title (from Canvas)
+   - Column B: Full Question Prompt (from Canvas)
+   - Column C: Overall Answer Key (empty - for you to fill in)
+   - Column D: Max Points (from Canvas)
+   - Columns E+: Rubric Criteria (if rubrics are used in Canvas)
 
 ✅ **Success**: Questions appear in Answers sheet  
 ❌ **Failed**: See Troubleshooting section
@@ -392,9 +396,14 @@ When you first use any AI grading feature, you'll need to authorize the script a
 ### Test 3: Fetch Student Submissions
 
 1. Return to main data sheet
-2. Click **Canvas AI Grading** → **Fetch Data** → **Fetch Student Submissions**
+2. Click **Canvas Tools** → **Fetch Essay Quiz Responses (Main Sheet)**
 3. Wait for processing
-4. Student data should populate
+4. Student data should populate with:
+   - Student Name (Sortable)
+   - Canvas User ID
+   - Question columns with student answers
+   - Grade columns (empty)
+   - Comment columns (empty)
 
 ✅ **Success**: Student names and answers appear  
 ❌ **Failed**: See Troubleshooting section
@@ -406,10 +415,13 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - Student submission in main sheet
    - Empty grade cell for a student
 
-2. Click **Canvas AI Grading** → **AI Grading** → **Auto-Grade with Claude**
-3. Select generosity level (try "3" for Normal)
-4. Confirm the operation
-5. Wait for processing
+2. Click **Grading Tools** → **Grade without Rubric (using Claude.ai)**
+3. Enter your Claude API key when prompted (first time only)
+4. Select generosity level:
+   - Try "3" for Normal/Balanced (default)
+   - Range: 1 (Very Strict) to 5 (Very Generous)
+5. Confirm the operation
+6. Wait for processing - you'll see toast notifications showing progress
 
 ✅ **Success**: Grade appears in the grade column  
 ❌ **Failed**: Check API keys and see Troubleshooting
@@ -420,7 +432,7 @@ When you first use any AI grading feature, you'll need to authorize the script a
 
 ### Menu Not Appearing
 
-**Problem**: Canvas AI Grading menu doesn't show up
+**Problem**: Canvas Tools, Grading Tools, and Sheet Tools menus don't show up
 
 **Solutions**:
 1. Wait 30 seconds and refresh the page
@@ -430,6 +442,7 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - Check for errors in the execution log
 3. Ensure all 12 `.gs` files are added
 4. Try a hard refresh: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)
+5. Check the `onOpen()` function in SheetUtilities.gs is present
 
 ### Authorization Errors
 
