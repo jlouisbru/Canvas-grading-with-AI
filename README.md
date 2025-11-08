@@ -8,24 +8,22 @@ A Google Apps Script integration that combines **Canvas LMS** with **Claude AI**
 
 ### AI-Powered Grading
 - **Automated Scoring**: Grade student submissions using Claude AI with customizable strictness levels (1-5 scale)
-- **Rubric-Based Grading**: Support for Canvas rubrics with AI interpretation
-- **Answer Key Grading**: Grade against overall answer keys
-- **Generosity Levels**: Choose from Very Strict to Very Generous grading approaches
+- **Grade Based on Answer Key**: Grade responses based on an answer key for each question
+- **Rubric-Based Grading**: Support grading with predetermined rubrics for all questions
 
-### Intelligent Feedback
-- **AI-Generated Comments**: Automatically generate personalized feedback for non-perfect scores
-- **Rubric-Based Comments**: Feedback aligned with Canvas rubric criteria
-- **Customizable Output**: Choose whether to include answer keys in feedback
+### Use AI for Feedback
+- **AI-Generated Comments**: Automatically generate personalized feedback based on students' responses and answer key
+- **Rubric-Based Comments**: Feedback aligned with rubric criteria for each question
+- **Customizable Output**: Choose whether to include answer keys in feedback to show ideal responses
 
 ### Canvas Integration
 - **Fetch Question Data**: Import quiz questions, prompts, and rubrics directly from Canvas
 - **Fetch Student Submissions**: Download student answers for grading
 - **Upload Results**: Push grades and comments back to Canvas seamlessly
-- **Bulk Operations**: Process multiple assignments efficiently
 
 ### Google Sheets Workflow
-- **Spreadsheet-Based Interface**: Work with familiar Google Sheets
-- **Visual Progress Tracking**: Toast notifications and progress indicators
+- **Clear Interface**: Work cirectly on Google Sheets
+- **Progress Tracking**: Toast notifications indicate the progress of each task
 - **Structured Data Management**: Organized answer keys, rubrics, and student data
 - **Settings Configuration**: Customize Canvas URL, API endpoints, and AI models
 
