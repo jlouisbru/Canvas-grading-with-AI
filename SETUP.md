@@ -1,15 +1,22 @@
 # Setup Guide: Canvas Grading with AI
 
-This comprehensive guide walks you through setting up the Canvas Grading with AI tool from scratch.
+This guide walks you through setting up the Canvas Grading with AI tool. We recommend using the **template spreadsheet method** for the easiest setup experience.
+
+## 🎯 Recommended Method: Copy Template Spreadsheet
+
+**Estimated time**: 5-10 minutes
+
+This is the fastest and easiest way to get started. The template includes all the code pre-installed.
 
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
 2. [Obtaining API Keys](#obtaining-api-keys)
-3. [Setting Up Google Apps Script](#setting-up-google-apps-script)
-4. [Configuring Your Spreadsheet](#configuring-your-spreadsheet)
-5. [First-Time Setup](#first-time-setup)
-6. [Testing Your Installation](#testing-your-installation)
-7. [Troubleshooting](#troubleshooting)
+3. [Method 1: Copy Template Spreadsheet (Recommended)](#method-1-copy-template-spreadsheet-recommended)
+4. [Method 2: Manual Installation (Advanced)](#method-2-manual-installation-advanced)
+5. [Configuring Your Settings](#configuring-your-settings)
+6. [First-Time Authorization](#first-time-authorization)
+7. [Testing Your Installation](#testing-your-installation)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -71,9 +78,150 @@ Before starting, gather:
 
 ---
 
-## Setting Up Google Apps Script
+## Method 1: Copy Template Spreadsheet (Recommended)
+
+### Why Use the Template?
+✅ All code pre-installed  
+✅ Settings sheet already configured  
+✅ No manual copying required  
+✅ Ready to use in minutes  
+
+### Step 1: Access the Template
+
+1. **Open the template spreadsheet**:
+   - Go to: [Canvas AI Grading Template](https://docs.google.com/spreadsheets/d/1e2AKNNvqC4knz_jcwL0FVTWHY3bmk1ll9-cL0XQGIeY/edit?usp=sharing)
+   - You'll see a Google Sheets document with three tabs: Main sheet, Answers, and Settings
+
+2. **Review the template** (optional):
+   - Click **Extensions** → **Apps Script** to see the pre-installed code
+   - All 12 script files are already there
+   - Close the Apps Script editor
+
+### Step 2: Make Your Copy
+
+1. **Copy the spreadsheet**:
+   - Click **File** → **Make a copy**
+   - A dialog appears
+
+2. **Name your copy**:
+   - Enter a descriptive name, such as:
+     - "Canvas AI Grading - BIO 101 Fall 2024"
+     - "AI Grading - [Your Course Name]"
+
+3. **Choose location**:
+   - Select a folder in your Google Drive
+   - Or leave it in "My Drive"
+
+4. **Create the copy**:
+   - Click **Make a copy**
+   - Your new spreadsheet opens automatically
+
+### Step 3: Verify Installation
+
+1. **Check for the menu**:
+   - Look for **Canvas AI Grading** in the menu bar
+   - If you don't see it, close the spreadsheet and reopen it
+   - Or wait 30 seconds and refresh the page
+
+2. **Verify sheets**:
+   - You should see three tabs at the bottom:
+     - Your main data sheet (name it as you like)
+     - **Answers** (for question data)
+     - **Settings** (for configuration)
+
+✅ **Success!** You now have a working copy with all code installed.
+
+**Next**: Jump to [Configuring Your Settings](#configuring-your-settings)
+
+---
+
+## Method 2: Manual Installation (Advanced)
+
+## Method 2: Manual Installation (Advanced)
+
+**For advanced users** who want to set up from scratch or modify the code.
 
 ### Step 1: Create a New Spreadsheet
+
+1. Go to [Google Sheets](https://sheets.google.com)
+2. Click **Blank** to create a new spreadsheet
+3. Name it (e.g., "Canvas AI Grading - [Course Name]")
+
+### Step 2: Open Apps Script Editor
+
+1. In your spreadsheet, click **Extensions** → **Apps Script**
+2. A new tab opens with the Apps Script editor
+3. You'll see a default `Code.gs` file
+
+### Step 3: Add Script Files
+
+For each `.gs` file from the [`/src/`](https://github.com/jlouisbru/Canvas-grading-with-AI/tree/main/src) folder:
+
+1. **Create New Script File**
+   - Click the **+** icon next to "Files"
+   - Select **Script**
+   - Name it (without `.gs` extension)
+
+2. **Copy Code from GitHub**
+   - Open the corresponding file from the repository
+   - Click the **Raw** button
+   - Select all (Ctrl+A / Cmd+A)
+   - Copy (Ctrl+C / Cmd+C)
+
+3. **Paste into Apps Script**
+   - In Apps Script editor, select all (Ctrl+A / Cmd+A)
+   - Paste (Ctrl+V / Cmd+V)
+   - Click **Save** (💾 icon)
+
+4. **Repeat for All 12 Files**:
+   - `Constants.gs`
+   - `Toast.gs`
+   - `ConfigHelpers.gs`
+   - `APIKeyHelpers.gs`
+   - `CanvasAPIHelpers.gs`
+   - `ClaudeAPIHelpers.gs`
+   - `SheetUtilities.gs`
+   - `SheetProcessingHelpers.gs`
+   - `AIOperationContext.gs`
+   - `FetchData.gs`
+   - `GradingTools.gs`
+   - `UploadData.gs`
+
+### Step 4: Initial Configuration
+
+1. **Update Constants.gs** (if needed)
+   - Open `Constants.gs`
+   - Update `DEFAULT_CANVAS_BASE_URL` to your institution's URL
+   - Save changes
+
+2. **Save Project**
+   - Click the **💾 Save** icon
+   - Or use Ctrl+S / Cmd+S
+
+3. **Close Apps Script**
+   - Close the Apps Script tab
+   - Return to your Google Spreadsheet
+
+### Step 5: Create Required Sheets
+
+1. **Create Settings Sheet**:
+   - Click the **+** at the bottom-left
+   - Name it exactly: `Settings`
+
+2. **Create Answers Sheet**:
+   - Click the **+** again
+   - Name it exactly: `Answers`
+
+3. **Main Data Sheet**:
+   - Rename "Sheet1" to your course name
+
+**Next**: Continue to [Configuring Your Settings](#configuring-your-settings)
+
+---
+
+## Configuring Your Settings
+
+Whether you used the template or manual installation, you need to configure your Canvas and course information.
 
 1. Go to [Google Sheets](https://sheets.google.com)
 2. Click **Blank** to create a new spreadsheet
@@ -137,30 +285,28 @@ For each `.gs` file from the repository:
 
 ---
 
-## Configuring Your Spreadsheet
+## Configuring Your Settings
 
-### Step 1: Create Settings Sheet
+Whether you used the template or manual installation, you need to configure your Canvas and course information.
 
-1. **Add New Sheet**
-   - Click the **+** at the bottom-left
-   - Name it exactly: `Settings`
+### Step 1: Update the Settings Sheet
 
-2. **Add Configuration Headers**
-   In Row 1, add:
-   - A1: `Setting Name`
-   - B1: `Value`
+1. **Open the Settings sheet** (click the tab at the bottom)
 
-3. **Add Required Settings**
-   Starting from Row 2:
+2. **If using the template**: You'll see pre-filled rows. Update the **Value** column (Column B) for:
+   
+3. **If manual installation**: Add these rows starting from Row 2:
 
-| Setting Name | Example Value | Description |
-|--------------|---------------|-------------|
-| CANVAS_BASE_URL | `https://canvas.chapman.edu` | Your Canvas URL (no trailing slash) |
-| COURSE_ID | `12345` | Your Canvas course ID |
-| ASSIGNMENT_ID | `67890` | Your Canvas assignment/quiz ID |
-| CLAUDE_API_ENDPOINT | `https://api.anthropic.com/v1/messages` | Claude API endpoint |
-| CLAUDE_GRADING_MODEL | `claude-3-haiku-20240307` | Model for grading |
-| CLAUDE_COMMENTING_MODEL | `claude-3-haiku-20240307` | Model for comments |
+| Setting Name | Example Value | Your Value |
+|--------------|---------------|------------|
+| CANVAS_BASE_URL | `https://canvas.chapman.edu` | Your institution's URL |
+| COURSE_ID | `12345` | Your course ID |
+| ASSIGNMENT_ID | `67890` | Your assignment ID |
+| CLAUDE_API_ENDPOINT | `https://api.anthropic.com/v1/messages` | (use default) |
+| CLAUDE_GRADING_MODEL | `claude-3-haiku-20240307` | (use default) |
+| CLAUDE_COMMENTING_MODEL | `claude-3-haiku-20240307` | (use default) |
+
+**Note**: If using the template, the API endpoint and model settings are already configured. You only need to update the Canvas-specific settings.
 
 ### Step 2: Find Canvas IDs
 
@@ -174,48 +320,37 @@ For each `.gs` file from the repository:
 2. Look at the URL: `https://canvas.institution.edu/courses/12345/assignments/67890`
 3. The number after `/assignments/` is your Assignment ID
 
-### Step 3: Create Answers Sheet
-
-1. **Add Another Sheet**
-   - Click the **+** at the bottom
-   - Name it exactly: `Answers`
-
-2. **Leave It Empty**
-   - This sheet will be auto-populated when you fetch questions
-   - Don't add any headers manually
-
-### Step 4: Main Data Sheet
-
-1. **Rename Default Sheet**
-   - Right-click "Sheet1"
-   - Rename to your course name (e.g., "BIO101-Fall2024")
-
-2. **This Sheet Will Store Student Data**
-   - Student names, answers, grades, comments
-   - Will be populated when you fetch submissions
-
 ---
 
-## First-Time Setup
+## First-Time Authorization
 
-### Step 1: Refresh Spreadsheet
+When you first use any AI grading feature, you'll need to authorize the script and enter your API keys.
 
-1. **Reload the Page**
-   - Press F5 or click reload
-   - Or close and reopen the spreadsheet
+### Step 1: Grant Script Permissions
 
-2. **Check for Menu**
-   - You should see a new menu: **Canvas AI Grading**
-   - If not visible, wait 30 seconds and refresh again
+1. **Trigger authorization**:
+   - Click **Canvas AI Grading** in the menu
+   - Select any option (e.g., "Fetch Data" → "Fetch Question Prompts")
 
-3. **Grant Permissions** (First Time Only)
-   - Click any menu option
-   - A dialog will appear: "Authorization Required"
+2. **Authorization dialog appears**:
+   - You'll see: "Authorization Required"
    - Click **Continue**
-   - Select your Google Account
-   - Click **Advanced** → **Go to [Project Name] (unsafe)**
+
+3. **Choose your Google Account**:
+   - Select the account that owns this spreadsheet
+
+4. **Grant permissions**:
+   - You may see a warning: "Google hasn't verified this app"
+   - Click **Advanced**
+   - Click **Go to [Project Name] (unsafe)**
+   - Note: This warning appears because it's your personal script
+   - It's safe to proceed
+
+5. **Review and allow**:
+   - Review the permissions requested
    - Click **Allow**
-   - Note: "unsafe" warning appears because this is your personal script
+
+✅ **Done!** You only need to do this once per spreadsheet.
 
 ### Step 2: Enter API Keys
 
