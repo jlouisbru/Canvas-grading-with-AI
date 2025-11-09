@@ -73,7 +73,7 @@ function getGenerosityPromptSegment_(generosityLevel) {
       generosityDescription = "Level 4 (Generous): Be more lenient if the student's answer captures the main concepts of the key/rubric criteria, even if some details are missing or not perfectly expressed. Award more partial credit.";
       break;
     case 5:
-      generosityDescription = "Level 5 (Very Generous): Give the student significant benefit of the doubt. If the answer demonstrates a general understanding or addresses the core of the question in relation to the key/rubric, even with notable omissions or inaccuracies, lean towards awarding more points. Focus on what the student got right.";
+      generosityDescription = "Level 5 (Very Generous - EXTREMELY LENIENT): Award FULL POINTS unless the answer is completely off-topic or fails to address the question at all. If the student demonstrates ANY understanding or makes ANY reasonable attempt to answer the question, they should receive full credit. Minor errors, omissions, incomplete explanations, or imperfect wording should NOT reduce the score. The student must essentially not answer the question or provide a completely irrelevant response to lose points. When in doubt, award full points.";
       break;
     default: // Should not happen if validated, but fallback to normal
       generosityDescription = "Level 3 (Normal/Balanced): Defaulting to normal generosity. Evaluate the answer fairly.";
@@ -180,11 +180,16 @@ Strictly follow these instructions:
 1.  You will receive: the question text, the student's answer, the total maximum points for the question, and a list of rubric criteria (each with a description and maximum points for that criterion).
 2.  Internal Evaluation (Do not show this in your output):
     a.  For each rubric criterion provided, evaluate how well the student's answer meets that criterion. Apply the specified generosity level when assessing each criterion.
-    b.  Assign a score for EACH criterion. This score cannot exceed the maximum points for that specific criterion.
+    b.  Assign a score for EACH criterion using DISCRETE SCORING ONLY:
+        - If the criterion is MET: Award the FULL points for that criterion
+        - If the criterion is NOT MET: Award 0 points for that criterion
+        - DO NOT award partial points for individual criteria (e.g., no 0.5 points for a 1-point criterion)
+        - Each criterion score must be either 0 or the full point value specified for that criterion
 3.  Overall Grade Calculation:
     a.  Sum the scores you assigned for each individual rubric criterion. This sum is the student's overall grade for the question.
     b.  The overall grade MUST NOT exceed the question's total maximum points (${questionMaxPoints}). If your sum of criteria scores exceeds this, cap the overall grade at ${questionMaxPoints}. If the sum is less than 0, the grade should be 0.
-4.  Output Format: Your response MUST be ONLY the final numerical overall grade (e.g., "8.5", "10", "0"). Do NOT provide any explanation, prefix, suffix, or any other text besides the numerical grade.
+    c.  Because you are using discrete scoring (0 or full points per criterion), the final grade will be one of the valid combinations of criterion points (e.g., for two 1-point criteria, valid grades are: 0, 1, or 2 only).
+4.  Output Format: Your response MUST be ONLY the final numerical overall grade (e.g., "1", "2", "0"). Do NOT provide any explanation, prefix, suffix, or any other text besides the numerical grade.
 ${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`; // Make generosity context specific for rubric
 
   let promptUser = `Please provide a numerical grade for the following student answer:\n\nQuestion: "${questionText}"\nStudent's Answer: "${studentAnswer}"\n\nTotal Maximum Points for this Question: ${questionMaxPoints}\n\nRubric Criteria:\n`;
@@ -192,6 +197,7 @@ ${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`; // 
     rubricCriteria.forEach((criterion, index) => {
       promptUser += `${index + 1}. Criterion Description: "${criterion.description}" (Max Points for this criterion: ${criterion.points})\n`;
     });
+    promptUser += `\nIMPORTANT: For each criterion above, award either 0 points (not met) or the full point value (met). Do not give partial credit for individual criteria.\n`;
   } else {
     promptUser += "No specific rubric criteria were provided. Grade based on the overall quality of the answer relative to the question and its maximum points, applying the specified generosity. If unable to determine a fair grade, assign 0.\n";
     promptSystem += "\nIf no rubric criteria are provided, assess generally against the question's intent and max points, or assign 0 if no basis for scoring. Apply the generosity level.";
