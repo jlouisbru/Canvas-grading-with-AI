@@ -303,7 +303,7 @@ If you find this tool helpful, please:
 
 - **Issues**: [GitHub Issues](https://github.com/jlouisbru/Canvas-grading-with-AI/issues)
 - **Website**: [jlouisbru.com](https://www.jlouisbru.com/)
-- **Email**: Contact via GitHub or website
+- **Email**: bru@chapman.edu
 
 ## 🔗 Related Projects
 
