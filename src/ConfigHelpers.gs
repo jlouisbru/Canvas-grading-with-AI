@@ -29,7 +29,7 @@ function getSetting_(settingName, defaultValue) {
       Logger.log(`Settings cache populated with ${_settingsCache.size} entries.`);
     }
     const value = _settingsCache.get(settingName);
-    return (value !== undefined && String(value).trim() !== "") ? value : defaultValue;
+    return (value !== undefined && String(value).trim() !== "" && String(value).trim() !== "•••••") ? value : defaultValue;
   } catch (e) {
     Logger.log(`Error reading setting "${settingName}": ${e.message}. Returning default.`);
     return defaultValue;

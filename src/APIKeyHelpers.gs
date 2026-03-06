@@ -10,6 +10,42 @@
  * @returns {string|null} The API key or null if not found/cancelled.
  * @private
  */
+/**
+ * Replaces the value of a named setting in the "Settings" sheet with "•••••".
+ * Also updates the in-memory settings cache to reflect the masked value.
+ * @param {string} settingName The name of the setting to mask (column A value).
+ * @private
+ */
+function maskSettingInSheet_(settingName) {
+  try {
+    const settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+    if (!settingsSheet) return;
+    const data = settingsSheet.getDataRange().getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][0]).trim() === settingName) {
+        settingsSheet.getRange(i + 1, 2).setValue("•••••");
+        if (_settingsCache) _settingsCache.set(settingName, "•••••");
+        Logger.log(`Masked "${settingName}" in Settings sheet.`);
+        break;
+      }
+    }
+  } catch (e) {
+    Logger.log(`Could not mask "${settingName}" in Settings sheet: ${e.message}`);
+  }
+}
+
+/**
+ * Retrieves an API key from Script Properties, Settings sheet, or prompts the user.
+ * If a plaintext key is found in the Settings sheet, it is automatically saved to
+ * Script Properties and replaced with "•••••" in the sheet.
+ * @param {string} serviceName User-friendly name of the service (e.g., "Canvas", "Claude").
+ * @param {string} propertyKey The key used for storing/retrieving from Script Properties.
+ * @param {string} settingSheetKey The key name in the "Settings" sheet.
+ * @param {string} promptTitle Title for the UI prompt if key is not found.
+ * @param {string} promptInstructions Instructions for the UI prompt.
+ * @returns {string|null} The API key or null if not found/cancelled.
+ * @private
+ */
 function getServiceApiKey_(serviceName, propertyKey, settingSheetKey, promptTitle, promptInstructions) {
   const scriptProperties = PropertiesService.getScriptProperties();
   let apiKey = scriptProperties.getProperty(propertyKey);
@@ -18,10 +54,14 @@ function getServiceApiKey_(serviceName, propertyKey, settingSheetKey, promptTitl
     return apiKey;
   }
 
+  // getSetting_ already treats "•••••" as empty, so this only returns a real key.
   apiKey = getSetting_(settingSheetKey, null);
   if (apiKey && String(apiKey).trim() !== "") {
-    Logger.log(`Using ${serviceName} API Key from "Settings" sheet for ${settingSheetKey}.`);
-    return String(apiKey).trim();
+    const cleanKey = String(apiKey).trim();
+    scriptProperties.setProperty(propertyKey, cleanKey);
+    maskSettingInSheet_(settingSheetKey);
+    Logger.log(`${serviceName} API Key read from Settings sheet, saved to Script Properties, and masked.`);
+    return cleanKey;
   }
 
   const ui = SpreadsheetApp.getUi();
