@@ -158,23 +158,29 @@ function fetchCanvasAPI_(canvasBaseUrl, path, apiKey, params = {}, method = 'get
  * @private
  */
 function getQuizIdFromAssignment_(apiKey, config) {
-  const rawValue = String(config.assignmentId).trim();
-
-  // Case 1: Quiz URL — extract quiz ID directly, no API call needed.
-  // e.g. https://canvas.yourinstitution.edu/courses/XXXXXX/quizzes/YYYYYY
-  const quizUrlMatch = rawValue.match(/\/quizzes\/(\d+)/i);
-  if (quizUrlMatch) {
-    const quizId = quizUrlMatch[1];
-    Logger.log(`Parsed Quiz ID ${quizId} directly from quiz URL — skipping assignment API call.`);
+  // Case 1: Quiz URL was provided — quiz ID already extracted in getConfigFromSheet_.
+  // Fetch quiz details to resolve the assignment_id (different from quiz ID) for the submissions endpoint.
+  if (config.quizIdFromUrl) {
+    const quizId = config.quizIdFromUrl;
+    Logger.log(`Quiz URL provided. Fetching quiz details for Quiz ID ${quizId} to resolve assignment_id...`);
+    try {
+      const quizDetails = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/quizzes/${quizId}`, apiKey);
+      if (quizDetails?.assignment_id) {
+        config.assignmentId = String(quizDetails.assignment_id);
+        Logger.log(`Resolved assignment ID ${config.assignmentId} from Quiz ID ${quizId}.`);
+      } else {
+        Logger.log(`Warning: Could not resolve assignment ID from Quiz ID ${quizId}. Submissions endpoint may fail.`);
+      }
+    } catch (e) {
+      Logger.log(`Failed to fetch quiz details for Quiz ID ${quizId}: ${e.message}`);
+    }
     return quizId;
   }
 
-  // Case 2: Speed Grader / assignment URL — extract assignment_id from query parameter.
-  // e.g. https://canvas.yourinstitution.edu/courses/XXXXXX/gradebook/speed_grader?assignment_id=YYYYYY
-  const assignmentUrlMatch = rawValue.match(/[?&]assignment_id=(\d+)/i);
-  const resolvedAssignmentId = assignmentUrlMatch ? assignmentUrlMatch[1] : rawValue;
+  // config.assignmentId is always a plain numeric ID at this point (normalized in getConfigFromSheet_).
+  const resolvedAssignmentId = String(config.assignmentId).trim();
 
-  // Case 3: Plain number (or ID extracted from URL above) — call assignments API.
+  // Case 2: Plain assignment ID — call assignments API.
   Logger.log(`Fetching assignment details for Assignment ID: ${resolvedAssignmentId}`);
   try {
     const assignmentDetails = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/assignments/${resolvedAssignmentId}`, apiKey);

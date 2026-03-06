@@ -70,6 +70,7 @@ function getServiceApiKey_(serviceName, propertyKey, settingSheetKey, promptTitl
     apiKey = response.getResponseText()?.trim();
     if (apiKey) {
       scriptProperties.setProperty(propertyKey, apiKey);
+      maskSettingInSheet_(settingSheetKey);
       ui.alert(`${serviceName} API Key saved to Script Properties for future use by this script project.`);
       return apiKey;
     } else {
