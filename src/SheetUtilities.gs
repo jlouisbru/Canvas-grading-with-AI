@@ -44,7 +44,7 @@ function setupSettingsSheet_() {
 
   const settings = [
     ["CANVAS_COURSE_URL", "", "Paste your Canvas course URL here (e.g., https://canvas.yourinstitution.edu/courses/12345). If set, CANVAS_BASE_URL and COURSE_ID are ignored."],
-    ["ASSIGNMENT_ID", "", "Enter the Assignment ID, Quiz ID, or paste the full URL — e.g., .../quizzes/146858 or ...?assignment_id=874882. The code will detect which type it is automatically."],
+    ["ASSIGNMENT_ID", "", "Enter the Assignment ID, Quiz ID, or paste the full quiz/assignment URL. Accepted formats: .../quizzes/XXXXXX or ...?assignment_id=XXXXXX. The code will detect which type it is automatically."],
     ["COURSE_ID", "", "Optional if CANVAS_COURSE_URL is set. Otherwise, enter the Canvas Course ID here."],
     ["CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL, "Optional if CANVAS_COURSE_URL is set. Otherwise, the base URL of your Canvas instance (e.g., https://canvas.yourinstitution.edu)."],
     ["CLAUDE_API_ENDPOINT", DEFAULT_CLAUDE_API_ENDPOINT, "The API endpoint for Claude Messages API."],

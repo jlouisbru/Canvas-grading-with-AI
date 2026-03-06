@@ -161,7 +161,7 @@ function getQuizIdFromAssignment_(apiKey, config) {
   const rawValue = String(config.assignmentId).trim();
 
   // Case 1: Quiz URL — extract quiz ID directly, no API call needed.
-  // e.g. https://canvas.chapman.edu/courses/82185/quizzes/146858
+  // e.g. https://canvas.yourinstitution.edu/courses/XXXXXX/quizzes/YYYYYY
   const quizUrlMatch = rawValue.match(/\/quizzes\/(\d+)/i);
   if (quizUrlMatch) {
     const quizId = quizUrlMatch[1];
@@ -170,7 +170,7 @@ function getQuizIdFromAssignment_(apiKey, config) {
   }
 
   // Case 2: Speed Grader / assignment URL — extract assignment_id from query parameter.
-  // e.g. https://canvas.chapman.edu/courses/82185/gradebook/speed_grader?assignment_id=874882
+  // e.g. https://canvas.yourinstitution.edu/courses/XXXXXX/gradebook/speed_grader?assignment_id=YYYYYY
   const assignmentUrlMatch = rawValue.match(/[?&]assignment_id=(\d+)/i);
   const resolvedAssignmentId = assignmentUrlMatch ? assignmentUrlMatch[1] : rawValue;
 
