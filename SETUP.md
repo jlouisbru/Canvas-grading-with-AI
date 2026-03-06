@@ -137,8 +137,6 @@ Before starting, gather:
 
 ## Method 2: Manual Installation (Advanced)
 
-## Method 2: Manual Installation (Advanced)
-
 **For advanced users** who want to set up from scratch or modify the code.
 
 ### Step 1: Create a New Spreadsheet
