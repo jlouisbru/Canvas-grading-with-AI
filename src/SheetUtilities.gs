@@ -43,12 +43,13 @@ function setupSettingsSheet_() {
   let settingsSheet = spreadsheet.getSheetByName(sheetName);
 
   const settings = [
-    ["COURSE_ID", "", "Enter the Canvas Course ID here."],
+    ["CANVAS_COURSE_URL", "", "Paste your Canvas course URL here (e.g., https://canvas.yourinstitution.edu/courses/12345). If set, CANVAS_BASE_URL and COURSE_ID are ignored."],
     ["ASSIGNMENT_ID", "", "Enter the Canvas Assignment ID (for the Quiz) here."],
-    ["CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL, "The base URL of your Canvas instance (e.g., https://canvas.yourinstitution.edu)"],
+    ["COURSE_ID", "", "Optional if CANVAS_COURSE_URL is set. Otherwise, enter the Canvas Course ID here."],
+    ["CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL, "Optional if CANVAS_COURSE_URL is set. Otherwise, the base URL of your Canvas instance (e.g., https://canvas.yourinstitution.edu)."],
     ["CLAUDE_API_ENDPOINT", DEFAULT_CLAUDE_API_ENDPOINT, "The API endpoint for Claude Messages API."],
-    ["CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL, "Claude model for auto-grading (e.g., claude-3-opus-20240229)."],
-    ["CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL, "Claude model for generating comments (e.g., claude-3-haiku-20240307)."],
+    ["CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL, "Claude model for auto-grading (e.g., claude-haiku-4-5-20251001)."],
+    ["CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL, "Claude model for generating comments (e.g., claude-haiku-4-5-20251001)."],
     ["CANVAS_API_KEY", "", "Optional: Your Canvas API Key. Leave blank to use Script Properties (prompted on first use) or if key is already in Script Properties."],
     ["CLAUDE_API_KEY", "", "Optional: Your Claude API Key. Leave blank to use Script Properties (prompted on first use) or if key is already in Script Properties."]
   ];
@@ -62,7 +63,7 @@ function setupSettingsSheet_() {
     settingsSheet.autoResizeColumn(1);
     settingsSheet.autoResizeColumn(2);
     settingsSheet.autoResizeColumn(3);
-    ui.alert("Settings Sheet Created", `A new sheet named "Settings" has been created. Please populate COURSE_ID, ASSIGNMENT_ID, and review other values. API keys are best stored in Script Properties (you'll be prompted if not found).`, ui.ButtonSet.OK);
+    ui.alert("Settings Sheet Created", `A new sheet named "Settings" has been created.\n\nQuickest setup: paste your Canvas course URL into CANVAS_COURSE_URL (e.g., https://canvas.yourinstitution.edu/courses/12345), then fill in ASSIGNMENT_ID.\n\nAlternatively, fill in COURSE_ID and CANVAS_BASE_URL separately.\n\nAPI keys are best stored in Script Properties (you'll be prompted if not found).`, ui.ButtonSet.OK);
   } else {
     const existingData = settingsSheet.getDataRange().getValues();
     const existingSettingsMap = new Map();
@@ -78,9 +79,9 @@ function setupSettingsSheet_() {
       settingsSheet.autoResizeColumn(1);
       settingsSheet.autoResizeColumn(2);
       settingsSheet.autoResizeColumn(3);
-      ui.alert("Settings Sheet Verified", `"Settings" sheet found. Missing default settings (if any) have been added. Please review, especially COURSE_ID and ASSIGNMENT_ID.`, ui.ButtonSet.OK);
+      ui.alert("Settings Sheet Verified", `"Settings" sheet found. Missing default settings (if any) have been added. Please review — set CANVAS_COURSE_URL (or COURSE_ID + CANVAS_BASE_URL) and ASSIGNMENT_ID.`, ui.ButtonSet.OK);
     } else {
-      ui.alert("Settings Sheet Verified", `"Settings" sheet already exists. Please ensure COURSE_ID and ASSIGNMENT_ID are correct.`, ui.ButtonSet.OK);
+      ui.alert("Settings Sheet Verified", `"Settings" sheet already exists. Please ensure CANVAS_COURSE_URL (or COURSE_ID + CANVAS_BASE_URL) and ASSIGNMENT_ID are correct.`, ui.ButtonSet.OK);
     }
   }
 }
