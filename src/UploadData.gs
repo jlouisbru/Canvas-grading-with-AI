@@ -124,7 +124,6 @@ function uploadEssayGradesToCanvas() {
         try {
           fetchCanvasAPI_(config.canvasBaseUrl, apiPath, apiKey, {}, 'put', payload);
           successCount++;
-          Utilities.sleep(200);
         } catch (e) {
           failCount++;
           Logger.log(`FAILED upload for ${studentInfo}: ${e.message}\nPayload: ${JSON.stringify(payload)}`);
@@ -135,7 +134,6 @@ function uploadEssayGradesToCanvas() {
     });
 
     showToast_('Upload Complete!', 'Success', 5);
-    Utilities.sleep(1000); // Allow toast to be seen before alert
     let summary = `Upload Complete!\n\n` +
       `Attempted updates for: ${itemsToUpdateCount} grade/comment entries.\n` +
       `Successful student submissions updated: ${successCount}\n` +

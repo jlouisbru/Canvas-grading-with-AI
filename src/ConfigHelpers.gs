@@ -1,7 +1,12 @@
 // ConfigHelpers.gs
 
+// Module-level cache: populated once per script execution, eliminating
+// repeated getDataRange().getValues() calls for every getSetting_ lookup.
+let _settingsCache = null;
+
 /**
  * Helper function to get a specific setting value from the "Settings" sheet.
+ * Results are cached for the lifetime of the current script execution.
  * @param {string} settingName The name of the setting (as it appears in Column A of "Settings").
  * @param {any} defaultValue The value to return if the setting is not found.
  * @returns {any} The setting value or the default.
@@ -9,23 +14,26 @@
  */
 function getSetting_(settingName, defaultValue) {
   try {
-    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    const settingsSheet = spreadsheet.getSheetByName("Settings");
-    if (!settingsSheet) {
-      Logger.log(`"Settings" sheet not found. Returning default for ${settingName}.`);
-      return defaultValue;
-    }
-    const data = settingsSheet.getDataRange().getValues();
-    const headerOffset = (data[0] && data[0][0] === "Setting Name") ? 1 : 0;
-    for (let i = headerOffset; i < data.length; i++) {
-      if (data[i][0] === settingName) {
-        return data[i][1] !== undefined && String(data[i][1]).trim() !== "" ? data[i][1] : defaultValue;
+    if (!_settingsCache) {
+      const settingsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+      if (!settingsSheet) {
+        Logger.log(`"Settings" sheet not found. Returning default for ${settingName}.`);
+        return defaultValue;
       }
+      const data = settingsSheet.getDataRange().getValues();
+      const headerOffset = (data[0] && data[0][0] === "Setting Name") ? 1 : 0;
+      _settingsCache = new Map();
+      for (let i = headerOffset; i < data.length; i++) {
+        if (data[i][0]) _settingsCache.set(String(data[i][0]).trim(), data[i][1]);
+      }
+      Logger.log(`Settings cache populated with ${_settingsCache.size} entries.`);
     }
+    const value = _settingsCache.get(settingName);
+    return (value !== undefined && String(value).trim() !== "") ? value : defaultValue;
   } catch (e) {
     Logger.log(`Error reading setting "${settingName}": ${e.message}. Returning default.`);
+    return defaultValue;
   }
-  return defaultValue;
 }
 
 /**

@@ -56,9 +56,9 @@ function setupSettingsSheet_() {
   if (!settingsSheet) {
     settingsSheet = spreadsheet.insertSheet(sheetName);
     Logger.log(`Created new sheet: "${sheetName}"`);
-    settingsSheet.appendRow(["Setting Name", "Value", "Description"]);
+    const allRows = [["Setting Name", "Value", "Description"], ...settings];
+    settingsSheet.getRange(1, 1, allRows.length, 3).setValues(allRows);
     settingsSheet.setFrozenRows(1);
-    settings.forEach(setting => settingsSheet.appendRow(setting));
     settingsSheet.autoResizeColumn(1);
     settingsSheet.autoResizeColumn(2);
     settingsSheet.autoResizeColumn(3);
@@ -70,15 +70,11 @@ function setupSettingsSheet_() {
       if (row[0]) existingSettingsMap.set(String(row[0]).trim(), row[1]);
     });
 
-    let updated = false;
-    settings.forEach(settingDetails => {
-      if (!existingSettingsMap.has(settingDetails[0])) {
-        settingsSheet.appendRow(settingDetails);
-        Logger.log(`Added missing setting "${settingDetails[0]}" to "Settings" sheet.`);
-        updated = true;
-      }
-    });
-    if (updated) {
+    const missingSettings = settings.filter(s => !existingSettingsMap.has(s[0]));
+    if (missingSettings.length > 0) {
+      const lastRow = settingsSheet.getLastRow();
+      settingsSheet.getRange(lastRow + 1, 1, missingSettings.length, 3).setValues(missingSettings);
+      missingSettings.forEach(s => Logger.log(`Added missing setting "${s[0]}" to "Settings" sheet.`));
       settingsSheet.autoResizeColumn(1);
       settingsSheet.autoResizeColumn(2);
       settingsSheet.autoResizeColumn(3);
@@ -168,9 +164,7 @@ function clearGradesAndOrComments() {
       }
       if (["COMMENTS", "BOTH"].includes(clearType) && qCols.commentColIndex !== undefined) {
         mainSheet.getRange(studentDataStartRow, qCols.commentColIndex + 1, numStudentRows).clearContent();
-        if (clearType !== "BOTH" || (clearType === "BOTH" && (qCols.gradeColIndex === undefined || !["GRADES", "BOTH"].includes(clearType)))) {
-             cellsCleared += numStudentRows; // Avoid double counting if "BOTH" already counted for grade
-        }
+        cellsCleared += numStudentRows;
         Logger.log(`Cleared comment column for QID ${qId}`);
       }
     } else {
