@@ -114,6 +114,7 @@ function fetchAndPopulateQuestionPrompts() {
     }
 
     let questionsProcessedCount = 0;
+    const rowsToWrite = [];
     canvasOrderedQIds.forEach(qId => {
       const qInfo = canvasQuestionMap[qId];
       if (!qInfo) {
@@ -135,9 +136,13 @@ function fetchAndPopulateQuestionPrompts() {
       for (let k = 0; k < MAX_RUBRIC_CRITERIA * 2; k++) {
         newRowValues.push(rubricValuesToUse[k] || "");
       }
-      answersSheet.appendRow(newRowValues); // Data rows are appended
+      rowsToWrite.push(newRowValues);
       questionsProcessedCount++;
     });
+
+    if (rowsToWrite.length > 0) {
+      answersSheet.getRange(2, 1, rowsToWrite.length, numManagedColumns).setValues(rowsToWrite);
+    }
 
     showToast_('"Answers" sheet rebuilt successfully!', 'Success', 5);
     ui.alert('Answers Sheet Rebuilt',

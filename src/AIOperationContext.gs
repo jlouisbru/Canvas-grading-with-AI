@@ -21,27 +21,11 @@ function initializeAIOperationContext_(mainSheet, needsRubricData, needsAnswerKe
   const claudeApiKey = getClaudeApiKey_();
   if (!claudeApiKey) return null;
 
-  const config = getConfigFromSheet_();
-  if (!config) return null;
-
-  const canvasApiKey = getCanvasApiKey_();
-  if (!canvasApiKey) {
-      ui.alert("Error: Canvas API Key Missing", "Canvas API Key is required to determine question context for AI operations from the main sheet header. Please provide it when prompted or in Settings.");
-      return null;
-  }
-  const quizId = getQuizIdFromAssignment_(canvasApiKey, config);
-
-  // Fetch questionMap and orderedQuestionIds for accurate header parsing context.
-  // If quizId is null, these will be empty.
-  const { questionMap = {}, orderedQuestionIds = [] } = quizId ? getEssayQuestions_(canvasApiKey, config, quizId) : {};
-  if (quizId && orderedQuestionIds.length === 0) {
-      Logger.log("Info: No essay questions found in the Canvas quiz for QuizID: " + quizId + ". Header parsing will use existing sheet structure.");
-  }
-
-  // If orderedQuestionIds is empty (e.g., no quizId or no essay questions),
-  // parseMainSheetHeader_ will attempt to derive QIDs from the existing header.
-  const qidsForHeaderParsing = orderedQuestionIds.length > 0 ? orderedQuestionIds : getHeaderValues_(mainSheet).map(h => (String(h).match(/\[Q ID: (\d+)\]/) || [])[1]).filter(Boolean);
-  const mainSheetHeaderInfo = parseMainSheetHeader_(mainSheet, qidsForHeaderParsing);
+  // Derive QIDs directly from the existing sheet header — no Canvas API call needed.
+  const qidsFromHeader = getHeaderValues_(mainSheet)
+    .map(h => (String(h).match(/\[Q ID: (\d+)\]/) || [])[1])
+    .filter(Boolean);
+  const mainSheetHeaderInfo = parseMainSheetHeader_(mainSheet, qidsFromHeader);
 
   if (!mainSheetHeaderInfo) {
     ui.alert("Error: Main Sheet Header Invalid", "Could not parse main sheet header. Ensure Row 1 is correct (Student Name, Canvas User ID, QID columns). Run 'Fetch Essay Quiz Responses' to rebuild if needed.", ui.ButtonSet.OK);
@@ -86,8 +70,7 @@ function initializeAIOperationContext_(mainSheet, needsRubricData, needsAnswerKe
   }
 
   return {
-    ui, spreadsheet, mainSheet, answersSheet, claudeApiKey, config,
-    canvasApiKey, quizId, questionMap, orderedQuestionIds, mainSheetHeaderInfo,
-    rubricDataMap, answerKeyDataMap
+    ui, spreadsheet, mainSheet, answersSheet, claudeApiKey,
+    mainSheetHeaderInfo, rubricDataMap, answerKeyDataMap
   };
 }

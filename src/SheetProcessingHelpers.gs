@@ -12,12 +12,13 @@ function stripHtml_(htmlString) {
   }
   return htmlString
     .replace(/<[^>]*>/g, '')
-    .replace(/ /gi, ' ')
-    .replace(/&/gi, '&')
-    .replace(/</gi, '<')
-    .replace(/>/gi, '>')
-    .replace(/"/gi, '"')
-    .replace(/'/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/gi, "'")
     .trim();
 }
 
@@ -52,7 +53,7 @@ function parseMainSheetHeader_(sheet, orderedQuestionIds) {
 
   if (userIdColIndex === -1) {
     Logger.log("Could not find 'Canvas User ID' in header row 1.");
-    return null; 
+    return null;
   }
 
   const questionColumnsMap = new Map();
@@ -60,14 +61,14 @@ function parseMainSheetHeader_(sheet, orderedQuestionIds) {
     const qIdMatch = String(headerText).match(/\[Q ID: (\d+)\]/);
     if (qIdMatch && qIdMatch[1]) {
       const qId = qIdMatch[1];
-      
+
       // If orderedQuestionIds is provided and not empty, use it as a filter.
       // Otherwise, process all found QIDs in the header.
       if (orderedQuestionIds && orderedQuestionIds.length > 0 && !orderedQuestionIds.includes(qId)) {
-          return; 
+          return;
       }
 
-      if (!headerText.includes(" Grade") && !headerText.includes(" Comment")) { 
+      if (!headerText.includes(" Grade") && !headerText.includes(" Comment")) {
         if (i + 2 < headerValues.length &&
             String(headerValues[i+1]).includes(`[Q ID: ${qId}] Grade`) &&
             String(headerValues[i+2]).includes(`[Q ID: ${qId}] Comment`)) {
@@ -213,42 +214,42 @@ function parseRubricDataFromAnswersSheet_() {
 
   const rubricDataMap = {};
   const answersSheetValues = answersSheet.getDataRange().getValues();
-  for (let i = 1; i < answersSheetValues.length; i++) { 
+  for (let i = 1; i < answersSheetValues.length; i++) {
     const row = answersSheetValues[i];
     const qIdTitleCell = row[0] ? String(row[0]) : "";
     const qIdMatch = qIdTitleCell.match(/\[Q ID: (\d+)\]/);
-    if (!qIdMatch?.[1]) continue; 
+    if (!qIdMatch?.[1]) continue;
     const qId = qIdMatch[1];
 
-    const overallKey = String(row[2] || "").trim(); 
-    const canvasMaxPointsStr = String(row[3] || "").trim(); 
+    const overallKey = String(row[2] || "").trim();
+    const canvasMaxPointsStr = String(row[3] || "").trim();
     const canvasMaxPoints = canvasMaxPointsStr && !isNaN(parseFloat(canvasMaxPointsStr)) ? parseFloat(canvasMaxPointsStr) : 0;
 
-    if (canvasMaxPoints <= 0 && overallKey) { 
+    if (canvasMaxPoints <= 0 && overallKey) {
         Logger.log(`Warning for QID ${qId}: Max Points (Col D) is missing or zero. Value: '${canvasMaxPointsStr}'. Rubric grading may rely on criteria points total if Canvas points are 0.`);
     }
 
     const criteria = [];
     for (let j = 0; j < MAX_RUBRIC_CRITERIA; j++) {
-      const descColIndex = 4 + (j * 2);    
-      const ptsColIndex = descColIndex + 1; 
+      const descColIndex = 4 + (j * 2);
+      const ptsColIndex = descColIndex + 1;
       if (descColIndex < row.length && ptsColIndex < row.length) {
         const desc = String(row[descColIndex]).trim();
         const ptsStr = String(row[ptsColIndex]).trim();
         if (desc && ptsStr && !isNaN(parseFloat(ptsStr)) && parseFloat(ptsStr) > 0) {
           criteria.push({ description: desc, points: parseFloat(ptsStr) });
-        } else if (desc || (ptsStr && ptsStr !== "0"  && ptsStr !== "")) { 
+        } else if (desc || (ptsStr && ptsStr !== "0"  && ptsStr !== "")) {
           Logger.log(`QID ${qId}, Criterion ${j+1}: Incomplete or invalid. Description: '${desc}', Points: '${ptsStr}'. Skipping this criterion.`);
         }
       } else {
-        break; 
+        break;
       }
     }
-    
+
     if (canvasMaxPoints > 0 || criteria.length > 0 ) {
          rubricDataMap[qId] = { overallKey, canvasMaxPoints, criteria };
-    } else if (overallKey) { 
-         rubricDataMap[qId] = { overallKey, canvasMaxPoints: 0, criteria: [] }; 
+    } else if (overallKey) {
+         rubricDataMap[qId] = { overallKey, canvasMaxPoints: 0, criteria: [] };
     }
   }
   Logger.log(`Parsed rubric data for ${Object.keys(rubricDataMap).length} questions from "Answers" sheet.`);
