@@ -158,17 +158,34 @@ function fetchCanvasAPI_(canvasBaseUrl, path, apiKey, params = {}, method = 'get
  * @private
  */
 function getQuizIdFromAssignment_(apiKey, config) {
-  Logger.log(`Fetching assignment details for Assignment ID: ${config.assignmentId}`);
+  const rawValue = String(config.assignmentId).trim();
+
+  // Case 1: Quiz URL — extract quiz ID directly, no API call needed.
+  // e.g. https://canvas.chapman.edu/courses/82185/quizzes/146858
+  const quizUrlMatch = rawValue.match(/\/quizzes\/(\d+)/i);
+  if (quizUrlMatch) {
+    const quizId = quizUrlMatch[1];
+    Logger.log(`Parsed Quiz ID ${quizId} directly from quiz URL — skipping assignment API call.`);
+    return quizId;
+  }
+
+  // Case 2: Speed Grader / assignment URL — extract assignment_id from query parameter.
+  // e.g. https://canvas.chapman.edu/courses/82185/gradebook/speed_grader?assignment_id=874882
+  const assignmentUrlMatch = rawValue.match(/[?&]assignment_id=(\d+)/i);
+  const resolvedAssignmentId = assignmentUrlMatch ? assignmentUrlMatch[1] : rawValue;
+
+  // Case 3: Plain number (or ID extracted from URL above) — call assignments API.
+  Logger.log(`Fetching assignment details for Assignment ID: ${resolvedAssignmentId}`);
   try {
-    const assignmentDetails = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/assignments/${config.assignmentId}`, apiKey);
+    const assignmentDetails = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/assignments/${resolvedAssignmentId}`, apiKey);
     if (!assignmentDetails?.quiz_id) {
-      Logger.log(`Warning: Could not find Quiz ID for Assignment ID ${config.assignmentId}. This assignment may not be a quiz, or the API response was unexpected.`);
+      Logger.log(`Warning: Could not find Quiz ID for Assignment ID ${resolvedAssignmentId}. This assignment may not be a quiz, or the API response was unexpected.`);
       return null;
     }
     Logger.log(`Found Quiz ID: ${assignmentDetails.quiz_id}`);
     return String(assignmentDetails.quiz_id);
   } catch (e) {
-    Logger.log(`Failed to get assignment details for assignment ${config.assignmentId}: ${e.message}`);
+    Logger.log(`Failed to get assignment details for assignment ${resolvedAssignmentId}: ${e.message}`);
     return null;
   }
 }
