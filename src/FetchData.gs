@@ -152,6 +152,7 @@ function fetchAndPopulateQuestionPrompts() {
       ui.ButtonSet.OK);
 
   } catch (error) {
+    if (error.isCanvasAuthError) { handleCanvasAuthError_(); showToast_('Canvas API key error.', 'Error', 5); return; }
     Logger.log(`Error in fetchAndPopulateQuestionPrompts: ${error.message}\nStack: ${error.stack}`);
     showToast_('Error updating "Answers" sheet.', 'Error', 5);
     ui.alert('Error Updating "Answers" Sheet', `Could not update "Answers" sheet: ${error.message}. Please check the logs.`, ui.ButtonSet.OK);
@@ -362,6 +363,7 @@ function fetchAndPopulateQuizResponses() {
       ui.ButtonSet.OK);
 
   } catch (error) {
+    if (error.isCanvasAuthError) { handleCanvasAuthError_(); showToast_('Canvas API key error.', 'Error', 5); return; }
     Logger.log(`Error in fetchAndPopulateQuizResponses (targeting "${mainSheetName}"): ${error.message}\nStack: ${error.stack}`);
     showToast_('Fetch Failed. Check logs.', 'Error', 10);
     ui.alert(`Fetch Error (Sheet: "${mainSheetName}")`, `${error.message}. Check Logs for details (View > Logs).`, ui.ButtonSet.OK);

@@ -28,6 +28,9 @@ function onOpen() {
     .addItem('Clear Grades/Comments on Main Sheet', 'clearGradesAndOrComments')
     .addSeparator()
     .addItem('Setup/Verify "Settings" Sheet', 'setupSettingsSheet_')
+    .addSeparator()
+    .addItem('Reset Claude API Key', 'resetClaudeApiKey')
+    .addItem('Reset Canvas API Key', 'resetCanvasApiKey')
     .addToUi();
 }
 

@@ -125,6 +125,7 @@ function uploadEssayGradesToCanvas() {
           fetchCanvasAPI_(config.canvasBaseUrl, apiPath, apiKey, {}, 'put', payload);
           successCount++;
         } catch (e) {
+          if (e.isCanvasAuthError) throw e; // Propagate to outer catch for proper handling
           failCount++;
           Logger.log(`FAILED upload for ${studentInfo}: ${e.message}\nPayload: ${JSON.stringify(payload)}`);
         }
@@ -144,6 +145,7 @@ function uploadEssayGradesToCanvas() {
     Logger.log(`Upload summary: SuccessStudents=${successCount}, FailStudents=${failCount}, SkippedStudents=${skippedCount}, ItemsToUpdate=${itemsToUpdateCount}`);
 
   } catch (error) {
+    if (error.isCanvasAuthError) { handleCanvasAuthError_(); showToast_('Canvas API key error.', 'Error', 5); return; }
     showToast_('Upload Failed.', 'Error', 5);
     Logger.log(`Error in uploadEssayGradesToCanvas: ${error.message}\nStack: ${error.stack}`);
     ui.alert('Upload Error', error.message + '. Check Logs.', ui.ButtonSet.OK);

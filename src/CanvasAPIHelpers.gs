@@ -141,7 +141,9 @@ function fetchCanvasAPI_(canvasBaseUrl, path, apiKey, params = {}, method = 'get
         errorDetails += ` Response: ${responseBody.substring(0,500)}...`;
       }
       Logger.log(`HTTP Error ${responseCode} for ${options.method.toUpperCase()} ${currentUrl}: ${errorDetails}`);
-      throw new Error(`Canvas API request failed for ${path}. ${errorDetails}`);
+      const httpErr = new Error(`Canvas API request failed for ${path}. ${errorDetails}`);
+      if (responseCode === 401 || responseCode === 403) httpErr.isCanvasAuthError = true;
+      throw httpErr;
     }
   } while (options.method === 'get' && nextPageUrl);
 
@@ -172,6 +174,7 @@ function getQuizIdFromAssignment_(apiKey, config) {
         Logger.log(`Warning: Could not resolve assignment ID from Quiz ID ${quizId}. Submissions endpoint may fail.`);
       }
     } catch (e) {
+      if (e.isCanvasAuthError) throw e;
       Logger.log(`Failed to fetch quiz details for Quiz ID ${quizId}: ${e.message}`);
     }
     return quizId;
@@ -191,6 +194,7 @@ function getQuizIdFromAssignment_(apiKey, config) {
     Logger.log(`Found Quiz ID: ${assignmentDetails.quiz_id}`);
     return String(assignmentDetails.quiz_id);
   } catch (e) {
+    if (e.isCanvasAuthError) throw e;
     Logger.log(`Failed to get assignment details for assignment ${resolvedAssignmentId}: ${e.message}`);
     return null;
   }
@@ -210,6 +214,7 @@ function getEssayQuestions_(apiKey, config, quizId) {
   try {
     allQuestions = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/quizzes/${quizId}/questions`, apiKey, { 'per_page': 100 });
   } catch (e) {
+    if (e.isCanvasAuthError) throw e;
     Logger.log(`ERROR fetching quiz questions for Quiz ID ${quizId}: ${e.message}`);
     throw new Error(`Failed to fetch questions for Quiz ID ${quizId}. Check API permissions or Quiz ID validity. Original error: ${e.message}`);
   }
@@ -333,6 +338,7 @@ function fetchAndMapQuizSubmissions_(apiKey, config, quizId) {
   try {
     quizSubmissionsResponse = fetchCanvasAPI_(config.canvasBaseUrl, apiPath, apiKey, { 'per_page': 100 });
   } catch (e) {
+    if (e.isCanvasAuthError) throw e;
     Logger.log(`Error fetching quiz submissions for quiz ${quizId}: ${e.message}`);
     return null;
   }

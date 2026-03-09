@@ -5,7 +5,7 @@
  * @param {object} payload The full payload for the Claude Messages API.
  * @param {string} apiKey Claude API Key.
  * @param {string} [callingFunctionName="Claude API"] For logging purposes.
- * @returns {{success: boolean, text: string|null, rawResponse: string, errorMsg: string}}
+ * @returns {{success: boolean, text: string|null, rawResponse: string, errorMsg: string, isAuthError: boolean}}
  * @private
  */
 function callClaudeAPIMessages_(payload, apiKey, callingFunctionName = "Claude API") {
@@ -22,6 +22,7 @@ function callClaudeAPIMessages_(payload, apiKey, callingFunctionName = "Claude A
   let errorMsg = "";
   let responseText = null;
   let success = false;
+  let isAuthError = false;
 
   Logger.log(`${callingFunctionName}: Calling Claude. Model: ${payload.model}. Max Tokens: ${payload.max_tokens}. User Message (first 100 chars): ${payload.messages[0]?.content?.substring(0,100)}`);
 
@@ -40,6 +41,10 @@ function callClaudeAPIMessages_(payload, apiKey, callingFunctionName = "Claude A
         errorMsg = `${callingFunctionName}: Claude API response OK but content/text missing.`;
         Logger.log(errorMsg + " Full Resp: " + rawResponse.substring(0, 500));
       }
+    } else if (responseCode === 401 || responseCode === 403) {
+      isAuthError = true;
+      errorMsg = `${callingFunctionName}: Claude API Authentication Error (${responseCode}). API key is invalid or expired. Response: ${rawResponse.substring(0, 300)}`;
+      Logger.log(errorMsg);
     } else {
       errorMsg = `${callingFunctionName}: Claude API Error. Status: ${responseCode}. Response: ${rawResponse.substring(0, 500)}`;
       Logger.log(errorMsg);
@@ -48,7 +53,7 @@ function callClaudeAPIMessages_(payload, apiKey, callingFunctionName = "Claude A
     errorMsg = `${callingFunctionName}: Exception during Claude API call: ${e.message}`;
     Logger.log(errorMsg + (rawResponse ? ` Raw Response (if any from fetch error): ${rawResponse.substring(0,200)}` : ""));
   }
-  return { success, text: responseText, rawResponse, errorMsg };
+  return { success, text: responseText, rawResponse, errorMsg, isAuthError };
 }
 
 /**
@@ -90,7 +95,7 @@ function getGenerosityPromptSegment_(generosityLevel) {
  * @param {string} apiKey Claude API Key.
  * @param {string} modelName The Claude model to use.
  * @param {number} generosityLevel The generosity level (1-5).
- * @returns {{grade: string|null, rawResponse: string, errorMsg: string}}
+ * @returns {{grade: string|null, rawResponse: string, errorMsg: string, isAuthError: boolean}}
  * @private
  */
 function callClaudeAPIForGrading_(questionPrompt, answerKey, studentAnswer, pointsPossible, apiKey, modelName, generosityLevel) {
@@ -98,8 +103,7 @@ function callClaudeAPIForGrading_(questionPrompt, answerKey, studentAnswer, poin
   const promptSentToAI = `You are an AI grading assistant. A student provided an answer to a question. Compare it to the answer key and provide a numerical grade. The question is worth ${pointsPossible} points.\nStrictly follow these instructions:\n1. Your response MUST be ONLY the numerical grade (e.g., "1", "0.5", "0").\n2. Do NOT provide any explanation or any other text besides the numerical grade.\n3. If the student's answer is fully correct according to the key, award full points.\n4. If the student's answer is partially correct, award partial points based on the alignment with the key.\n5. If the student's answer is completely incorrect or irrelevant, award 0 points.\n6. The grade must not exceed ${pointsPossible} points. The grade must not be less than 0.\n${generosityInstruction}\n\nQuestion Context: "${questionPrompt}"\nAnswer Key: "${answerKey}"\nStudent's Answer: "${studentAnswer}"\nPoints Possible: ${pointsPossible}`;
   const payload = { model: modelName, max_tokens: 20, messages: [{ "role": "user", "content": promptSentToAI }] };
 
-  // ... (rest of the function: calling callClaudeAPIMessages_ and parsing grade, remains the same)
-  const { success, text, rawResponse, errorMsg: apiErrorMsg } = callClaudeAPIMessages_(payload, apiKey, "ClaudeGrading (Overall Key)");
+  const { success, text, rawResponse, errorMsg: apiErrorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeGrading (Overall Key)");
   let parsedGrade = null;
   let errorMsg = apiErrorMsg;
 
@@ -119,7 +123,7 @@ function callClaudeAPIForGrading_(questionPrompt, answerKey, studentAnswer, poin
     }
   }
   if (errorMsg && !apiErrorMsg) Logger.log(errorMsg);
-  return { grade: parsedGrade, rawResponse, errorMsg };
+  return { grade: parsedGrade, rawResponse, errorMsg, isAuthError: isAuthError || false };
 }
 
 /**
@@ -132,7 +136,7 @@ function callClaudeAPIForGrading_(questionPrompt, answerKey, studentAnswer, poin
  * @param {string} apiKey Claude API Key.
  * @param {string} modelName The Claude model to use.
  * @param {boolean} includeAnswerKey Whether to include the answer key in the comment.
- * @returns {{comment: string|null, rawResponse: string, errorMsg: string}}
+ * @returns {{comment: string|null, rawResponse: string, errorMsg: string, isAuthError: boolean}}
  * @private
  */
 function callClaudeAPIForCommenting_(questionPrompt, answerKey, studentAnswer, studentGrade, pointsPossible, apiKey, modelName, includeAnswerKey) {
@@ -156,9 +160,9 @@ You received ${studentGrade} out of ${pointsPossible} points for this answer.
 Please provide a feedback comment based on these details, following the instructions in the system prompt. Remember to use "you" and "your" when referring to the recipient.`;
   const payload = { model: modelName, max_tokens: 300, system: systemPrompt, messages: [{ "role": "user", "content": userPromptContent }] };
 
-  const { success, text, rawResponse, errorMsg } = callClaudeAPIMessages_(payload, apiKey, "ClaudeCommenting (Overall Key)");
+  const { success, text, rawResponse, errorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeCommenting (Overall Key)");
   if (!success && errorMsg) Logger.log(errorMsg);
-  return { comment: (success && text) ? text : null, rawResponse, errorMsg };
+  return { comment: (success && text) ? text : null, rawResponse, errorMsg, isAuthError: isAuthError || false };
 }
 
 /**
@@ -170,7 +174,7 @@ Please provide a feedback comment based on these details, following the instruct
  * @param {string} apiKey Claude API Key.
  * @param {string} modelName The Claude model to use.
  * @param {number} generosityLevel The generosity level (1-5).
- * @returns {{grade: number|null, rawResponse: string, errorMsg: string}}
+ * @returns {{grade: number|null, rawResponse: string, errorMsg: string, isAuthError: boolean}}
  * @private
  */
 function callClaudeAPIForRubricGrade_(questionText, studentAnswer, questionMaxPoints, rubricCriteria, apiKey, modelName, generosityLevel) {
@@ -190,7 +194,7 @@ Strictly follow these instructions:
     b.  The overall grade MUST NOT exceed the question's total maximum points (${questionMaxPoints}). If your sum of criteria scores exceeds this, cap the overall grade at ${questionMaxPoints}. If the sum is less than 0, the grade should be 0.
     c.  Because you are using discrete scoring (0 or full points per criterion), the final grade will be one of the valid combinations of criterion points (e.g., for two 1-point criteria, valid grades are: 0, 1, or 2 only).
 4.  Output Format: Your response MUST be ONLY the final numerical overall grade (e.g., "1", "2", "0"). Do NOT provide any explanation, prefix, suffix, or any other text besides the numerical grade.
-${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`; // Make generosity context specific for rubric
+${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`;
 
   let promptUser = `Please provide a numerical grade for the following student answer:\n\nQuestion: "${questionText}"\nStudent's Answer: "${studentAnswer}"\n\nTotal Maximum Points for this Question: ${questionMaxPoints}\n\nRubric Criteria:\n`;
   if (rubricCriteria && rubricCriteria.length > 0) {
@@ -205,8 +209,7 @@ ${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`; // 
   promptUser += "\nRemember, your response must be ONLY the numerical grade.";
   const payload = { model: modelName, max_tokens: 20, system: promptSystem, messages: [{ "role": "user", "content": promptUser }] };
 
-  // ... (rest of the function: calling callClaudeAPIMessages_ and parsing grade, remains the same)
-  const { success, text, rawResponse, errorMsg: apiErrorMsg } = callClaudeAPIMessages_(payload, apiKey, "ClaudeRubricGrade");
+  const { success, text, rawResponse, errorMsg: apiErrorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeRubricGrade");
   let parsedGrade = null;
   let errorMsg = apiErrorMsg;
 
@@ -226,7 +229,7 @@ ${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`; // 
     }
   }
   if (errorMsg && !apiErrorMsg) Logger.log(errorMsg + (rawResponse ? ` Raw Response: ${rawResponse.substring(0,100)}` : ""));
-  return { grade: parsedGrade, rawResponse, errorMsg };
+  return { grade: parsedGrade, rawResponse, errorMsg, isAuthError: isAuthError || false };
 }
 
 /**
@@ -240,7 +243,7 @@ ${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`; // 
  * @param {string} apiKey Claude API Key.
  * @param {string} modelName The Claude model to use.
  * @param {boolean} includeAnswerKey Whether to include the overallAnswerKey at the start of the comment.
- * @returns {{comment: string|null, rawResponse: string, errorMsg: string}}
+ * @returns {{comment: string|null, rawResponse: string, errorMsg: string, isAuthError: boolean}}
  * @private
  */
 function callClaudeAPIForRubricComment_(questionText, studentAnswer, overallAnswerKey, studentGrade, questionMaxPoints, rubricCriteria, apiKey, modelName, includeAnswerKey) {
@@ -276,7 +279,7 @@ Strictly follow these instructions:
   promptUser += "\nRemember, your response must be ONLY the feedback comment text, following all system instructions.";
   const payload = { model: modelName, max_tokens: 1000, system: promptSystem, messages: [{ "role": "user", "content": promptUser }] };
 
-  const { success, text, rawResponse, errorMsg } = callClaudeAPIMessages_(payload, apiKey, "ClaudeRubricComment");
+  const { success, text, rawResponse, errorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeRubricComment");
   if (!success && errorMsg) Logger.log(errorMsg + (rawResponse ? ` Raw Response: ${rawResponse.substring(0,100)}` : ""));
-  return { comment: (success && text) ? text : null, rawResponse, errorMsg };
+  return { comment: (success && text) ? text : null, rawResponse, errorMsg, isAuthError: isAuthError || false };
 }
