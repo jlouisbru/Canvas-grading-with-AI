@@ -88,6 +88,7 @@ function autoGradeWithClaude() {
           if (apiResult.grade !== null) {
             // Write immediately to the sheet — result is saved even if operation is interrupted later.
             mainSheet.getRange(sheetRowNumber, qColInfo.gradeColIndex + 1).setValue(parseFloat(apiResult.grade));
+            SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
             gradesWritten++;
           } else {
             Logger.log(`Claude returned invalid grade for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
@@ -211,6 +212,7 @@ function generateAIComments() {
             if (apiResult.comment) {
               // Write immediately to the sheet — result is saved even if operation is interrupted later.
               mainSheet.getRange(sheetRowNumber, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
+              SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
               commentsWritten++;
             } else {
               Logger.log(`Claude did not return a valid comment for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
@@ -308,6 +310,7 @@ function aiRubricGrade() {
           if (apiResult.grade !== null) {
             // Write immediately to the sheet — result is saved even if operation is interrupted later.
             mainSheet.getRange(sheetRowNumber, qColInfo.gradeColIndex + 1).setValue(apiResult.grade);
+            SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
             gradesWritten++;
           } else {
             Logger.log(`Claude returned invalid rubric grade for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
@@ -411,6 +414,7 @@ function aiRubricComment() {
             if (apiResult.comment) {
               // Write immediately to the sheet — result is saved even if operation is interrupted later.
               mainSheet.getRange(sheetRowNumber, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
+              SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
               commentsWritten++;
             } else {
               Logger.log(`Claude returned invalid rubric comment for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
