@@ -62,15 +62,17 @@ function autoGradeWithClaude() {
   let gradesWritten = 0, errorsEncountered = 0;
 
   let abortDueToAuthError = false;
-  for (let i = 0; i < studentDataValues.length; i++) {
+  for (const [qId, qColInfo] of questionColumnsMap) {
     if (abortDueToAuthError) break;
-    const studentRowValues = studentDataValues[i];
-    const sheetRowNumber = i + 2;
+    const pointsPossible = qColInfo.points;
 
-    for (const [qId, qColInfo] of questionColumnsMap) {
+    for (let i = 0; i < studentDataValues.length; i++) {
+      if (abortDueToAuthError) break;
+      const studentRowValues = studentDataValues[i];
+      const sheetRowNumber = i + 2;
+
       const studentAnswer = studentRowValues[qColInfo.answerColIndex];
       const currentGrade = studentRowValues[qColInfo.gradeColIndex];
-      const pointsPossible = qColInfo.points;
 
       if (studentAnswer && String(studentAnswer).trim() &&
           (currentGrade === "" || currentGrade === null || currentGrade === undefined || String(currentGrade).trim() === "")) {
@@ -182,16 +184,18 @@ function generateAIComments() {
   let commentsWritten = 0, errorsEncountered = 0;
 
   let abortDueToAuthError = false;
-  for (let i = 0; i < studentDataValues.length; i++) {
+  for (const [qId, qColInfo] of questionColumnsMap) {
     if (abortDueToAuthError) break;
-    const studentRowValues = studentDataValues[i];
-    const sheetRowNumber = i + 2;
+    const pointsPossible = qColInfo.points;
 
-    for (const [qId, qColInfo] of questionColumnsMap) {
+    for (let i = 0; i < studentDataValues.length; i++) {
+      if (abortDueToAuthError) break;
+      const studentRowValues = studentDataValues[i];
+      const sheetRowNumber = i + 2;
+
       const studentAnswer = studentRowValues[qColInfo.answerColIndex];
       const studentGradeRaw = studentRowValues[qColInfo.gradeColIndex];
       const currentComment = studentRowValues[qColInfo.commentColIndex];
-      const pointsPossible = qColInfo.points;
 
       const studentGradeStr = String(studentGradeRaw ?? "").trim();
       if (studentAnswer && String(studentAnswer).trim() && studentGradeStr &&
@@ -284,15 +288,17 @@ function aiRubricGrade() {
   let gradesWritten = 0, errorsEncountered = 0;
 
   let abortDueToAuthError = false;
-  for (let i = 0; i < studentDataValues.length; i++) {
+  for (const [qId, qColInfo] of questionColumnsMap) {
     if (abortDueToAuthError) break;
-    const studentRowValues = studentDataValues[i];
-    const sheetRowNumber = i + 2;
+    const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
 
-    for (const [qId, qColInfo] of questionColumnsMap) {
+    for (let i = 0; i < studentDataValues.length; i++) {
+      if (abortDueToAuthError) break;
+      const studentRowValues = studentDataValues[i];
+      const sheetRowNumber = i + 2;
+
       const studentAnswer = studentRowValues[qColInfo.answerColIndex];
       const currentGrade = studentRowValues[qColInfo.gradeColIndex];
-      const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
 
       if (studentAnswer && String(studentAnswer).trim() &&
           (currentGrade === "" || currentGrade === null || currentGrade === undefined || String(currentGrade).trim() === "")) {
@@ -383,16 +389,18 @@ function aiRubricComment() {
   let commentsWritten = 0, errorsEncountered = 0;
 
   let abortDueToAuthError = false;
-  for (let i = 0; i < studentDataValues.length; i++) {
+  for (const [qId, qColInfo] of questionColumnsMap) {
     if (abortDueToAuthError) break;
-    const studentRowValues = studentDataValues[i];
-    const sheetRowNumber = i + 2;
+    const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
 
-    for (const [qId, qColInfo] of questionColumnsMap) {
+    for (let i = 0; i < studentDataValues.length; i++) {
+      if (abortDueToAuthError) break;
+      const studentRowValues = studentDataValues[i];
+      const sheetRowNumber = i + 2;
+
       const studentAnswer = studentRowValues[qColInfo.answerColIndex];
       const studentGradeRaw = studentRowValues[qColInfo.gradeColIndex];
       const currentComment = studentRowValues[qColInfo.commentColIndex];
-      const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
 
       const studentGradeStr = String(studentGradeRaw ?? "").trim();
       if (studentAnswer && String(studentAnswer).trim() && studentGradeStr &&
