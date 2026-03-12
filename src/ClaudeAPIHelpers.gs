@@ -131,7 +131,7 @@ function callClaudeAPIForGrading_(questionPrompt, answerKey, studentAnswer, poin
  * @param {string} questionPrompt The text of the question.
  * @param {string} answerKey The ideal answer key.
  * @param {string} studentAnswer The student's answer.
- * @param {number} studentGrade The grade the student received.
+ * @param {number|null} studentGrade The grade the student received, or null if ungraded.
  * @param {number} pointsPossible Maximum points for the question.
  * @param {string} apiKey Claude API Key.
  * @param {string} modelName The Claude model to use.
@@ -140,25 +140,34 @@ function callClaudeAPIForGrading_(questionPrompt, answerKey, studentAnswer, poin
  * @private
  */
 function callClaudeAPIForCommenting_(questionPrompt, answerKey, studentAnswer, studentGrade, pointsPossible, apiKey, modelName, includeAnswerKey) {
-  let systemPrompt = `You are an AI teaching assistant providing feedback. Your goal is to help the recipient understand why their answer was not fully correct and what the correct answer entails, based on the provided answer key.
-Be concise and constructive. Do not repeat the grade received.
+  const hasGrade = studentGrade !== null && studentGrade !== undefined && !isNaN(studentGrade);
+
+  let systemPrompt = `You are an AI teaching assistant providing feedback on a student's answer. Be concise and constructive.
 When referring to the recipient of the feedback, use "you" or "your" instead of "the student" or "student's".`;
+
+  if (hasGrade) {
+    systemPrompt += `\nYour goal is to help the recipient understand why their answer was not fully correct and what the correct answer entails, based on the provided answer key. Do not repeat the grade received.`;
+  } else {
+    systemPrompt += `\nYour goal is to provide helpful feedback on the answer based on the provided answer key, pointing out what was done well and what could be improved.`;
+  }
 
   if (includeAnswerKey) {
     systemPrompt += `\nStart your comment by stating the correct answer or key elements from the answer key. Then, briefly explain why your answer didn't fully match the answer key or was incorrect, in relation to the answer key.`;
   } else {
     systemPrompt += `\nDirectly explain why your answer didn't fully match the answer key or was incorrect, in relation to the answer key. Do NOT restate the answer key itself.`;
   }
-  systemPrompt += `\nIf your answer has some correct elements, acknowledge them briefly if appropriate before pointing out omissions or errors.
-Your entire response should be just the feedback comment text, suitable for a spreadsheet cell.`;
+  systemPrompt += `\nIf your answer has some correct elements, acknowledge them briefly if appropriate before pointing out omissions or errors.`;
+  systemPrompt += `\nIMPORTANT: Your entire response must be 2-3 sentences maximum. Be direct and concise. Your entire response should be just the feedback comment text, suitable for a spreadsheet cell.`;
+
+  const gradeInfo = hasGrade
+    ? `You received ${studentGrade} out of ${pointsPossible} points for this answer.\n\n`
+    : "";
 
   const userPromptContent = `The question was: "${questionPrompt}"
 The ideal answer key is: "${answerKey}"
 Your answer was: "${studentAnswer}"
-You received ${studentGrade} out of ${pointsPossible} points for this answer.
-
-Please provide a feedback comment based on these details, following the instructions in the system prompt. Remember to use "you" and "your" when referring to the recipient.`;
-  const payload = { model: modelName, max_tokens: 300, system: systemPrompt, messages: [{ "role": "user", "content": userPromptContent }] };
+${gradeInfo}Please provide a feedback comment based on these details, following the instructions in the system prompt. Remember to use "you" and "your" when referring to the recipient.`;
+  const payload = { model: modelName, max_tokens: 150, system: systemPrompt, messages: [{ "role": "user", "content": userPromptContent }] };
 
   const { success, text, rawResponse, errorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeCommenting (Overall Key)");
   if (!success && errorMsg) Logger.log(errorMsg);
@@ -247,26 +256,30 @@ ${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`;
  * @private
  */
 function callClaudeAPIForRubricComment_(questionText, studentAnswer, overallAnswerKey, studentGrade, questionMaxPoints, rubricCriteria, apiKey, modelName, includeAnswerKey) {
-  let promptSystem = `You are an AI teaching assistant. Your task is to provide a constructive feedback comment for a student's answer, explaining why they received a specific grade.
+  const hasGrade = studentGrade !== null && studentGrade !== undefined && !isNaN(studentGrade);
+
+  let promptSystem = `You are an AI teaching assistant. Your task is to provide a constructive feedback comment for a student's answer.
 This feedback is based on an overall answer key (for general correctness) and potentially a detailed rubric (for specific criteria).
 Strictly follow these instructions:
-1.  You will receive: the question text, the student's answer, the overall answer key, the grade the student received, the total maximum points for the question, and a list of rubric criteria (if available).
-2.  The student received ${studentGrade} out of ${questionMaxPoints} points.
+1.  You will receive: the question text, the student's answer, the overall answer key, the total maximum points for the question, and a list of rubric criteria (if available).
+2.  ${hasGrade ? `The student received ${studentGrade} out of ${questionMaxPoints} points.` : `This answer has not been graded yet. Provide general feedback based on the answer key and rubric criteria.`}
 3.  Feedback Comment Generation:`;
 
   if (includeAnswerKey) {
-    promptSystem += `\n    a.  The comment MUST start with: "The correct answer generally involves: ${overallAnswerKey.replace(/"/g, '\\"')}." (Ensure the overall answer key is accurately inserted and provides context). Then, explain WHY the student received their grade.`;
+    promptSystem += `\n    a.  The comment MUST start with: "The correct answer generally involves: ${overallAnswerKey.replace(/"/g, '\\"')}." (Ensure the overall answer key is accurately inserted and provides context). Then, explain the performance against the answer key and rubric.`;
   } else {
-    promptSystem += `\n    a.  Explain WHY the student received their grade (${studentGrade}/${questionMaxPoints}). Do NOT start by restating the overall answer key.`;
+    promptSystem += `\n    a.  ${hasGrade ? `Explain WHY the student received their grade (${studentGrade}/${questionMaxPoints}).` : `Explain how the answer compares to the expected answer.`} Do NOT start by restating the overall answer key.`;
   }
 
   promptSystem += `
     b.  If rubric criteria WERE provided to you, refer to their performance against those specific rubric criteria. Mention strengths and weaknesses related to the criteria.
-    c.  If rubric criteria were NOT provided (or were empty), explain the grade based on how the student's answer compares to the overall answer key and general expectations for the question.
-    d.  Use "you" and "your" when addressing the student (e.g., "Your explanation of X was good, but you missed Y for Z criterion."). Be constructive and focus on areas for improvement if the grade is not full.
-4.  Output Format: Your response MUST be ONLY the feedback comment text, suitable for a spreadsheet cell. Do NOT include any prefixes, salutations, or any other text beyond the comment itself. Aim for a paragraph break (e.g. \\n\\n in output string) between the correct answer summary (if included) and your specific feedback if appropriate.`;
+    c.  If rubric criteria were NOT provided (or were empty), explain the feedback based on how the student's answer compares to the overall answer key and general expectations for the question.
+    d.  Use "you" and "your" when addressing the student (e.g., "Your explanation of X was good, but you missed Y for Z criterion."). Be constructive and focus on areas for improvement.`;
+  promptSystem += `
+4.  Output Format: Your response MUST be ONLY the feedback comment text, suitable for a spreadsheet cell, 2-3 sentences maximum. Do NOT include any prefixes, salutations, or any other text beyond the comment itself.`;
 
-  let promptUser = `Please provide a feedback comment for the student's answer below.\n\nQuestion: "${questionText}"\nStudent's Answer: "${studentAnswer}"\n\nOverall Answer Key (for general context, may or may not be directly included in your output based on system instructions): "${overallAnswerKey}"\nStudent's Grade: ${studentGrade} out of ${questionMaxPoints} possible points.\n\n`;
+  const gradeInfo = hasGrade ? `Student's Grade: ${studentGrade} out of ${questionMaxPoints} possible points.` : `This answer has not been graded yet.`;
+  let promptUser = `Please provide a feedback comment for the student's answer below.\n\nQuestion: "${questionText}"\nStudent's Answer: "${studentAnswer}"\n\nOverall Answer Key (for general context, may or may not be directly included in your output based on system instructions): "${overallAnswerKey}"\n${gradeInfo}\n\n`;
 
   if (rubricCriteria && rubricCriteria.length > 0) {
     promptUser += "Rubric Criteria that were likely used for grading (refer to these in your feedback):\n";
@@ -277,7 +290,7 @@ Strictly follow these instructions:
     promptUser += "No specific rubric criteria were provided for this question. Please explain the grade based on the student's answer relative to the overall answer key and the question's total maximum points.\n";
   }
   promptUser += "\nRemember, your response must be ONLY the feedback comment text, following all system instructions.";
-  const payload = { model: modelName, max_tokens: 1000, system: promptSystem, messages: [{ "role": "user", "content": promptUser }] };
+  const payload = { model: modelName, max_tokens: 150, system: promptSystem, messages: [{ "role": "user", "content": promptUser }] };
 
   const { success, text, rawResponse, errorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeRubricComment");
   if (!success && errorMsg) Logger.log(errorMsg + (rawResponse ? ` Raw Response: ${rawResponse.substring(0,100)}` : ""));

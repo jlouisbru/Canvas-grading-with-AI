@@ -32,11 +32,16 @@ function getGradingGenerosityLevel_(ui) {
  * are preserved if the operation is interrupted.
  */
 function autoGradeWithClaude() {
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const ui = SpreadsheetApp.getUi();
+  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
+  if (!mainSheet) {
+    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
+    return;
+  }
   const context = initializeAIOperationContext_(mainSheet, false, true); // Needs answerKeyMap
   if (!context) return;
 
-  const { ui, claudeApiKey, mainSheetHeaderInfo, answerKeyDataMap } = context;
+  const { claudeApiKey, mainSheetHeaderInfo, answerKeyDataMap } = context;
   if (!answerKeyDataMap || Object.keys(answerKeyDataMap).length === 0) {
     ui.alert("AI Grading Aborted", "No answer keys loaded from 'Answers' sheet (Column C).", ui.ButtonSet.OK);
     showToast_('AI Grading Aborted: No keys.', 'Error', 5);
@@ -142,104 +147,102 @@ function getIncludeAnswerKeyChoice_(ui, feedbackType = "key-based") {
 
 
 /**
- * Generates AI comments for student answers that did not receive full marks.
- * Writes each comment to the sheet immediately after the API call, so partial results
- * are preserved if the operation is interrupted.
+ * Generates AI feedback comments for student answers based on the overall answer key.
+ * Writes each comment to the sheet immediately after the API call.
  */
 function generateAIComments() {
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const context = initializeAIOperationContext_(mainSheet, false, true); // Needs answerKeyMap
+  const ui = SpreadsheetApp.getUi();
+  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
+  if (!mainSheet) {
+    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
+    return;
+  }
+  const context = initializeAIOperationContext_(mainSheet, false, true);
   if (!context) return;
 
-  const { ui, claudeApiKey, mainSheetHeaderInfo, answerKeyDataMap } = context;
-   if (!answerKeyDataMap || Object.keys(answerKeyDataMap).length === 0) {
+  const { claudeApiKey, mainSheetHeaderInfo, answerKeyDataMap } = context;
+  if (!answerKeyDataMap || Object.keys(answerKeyDataMap).length === 0) {
     ui.alert("AI Commenting Aborted", "No answer keys loaded from 'Answers' sheet (Column C).", ui.ButtonSet.OK);
     showToast_('AI Commenting Aborted.', 'Error', 5);
     return;
   }
 
-  const includeAnswerKey = getIncludeAnswerKeyChoice_(ui, "overall key");
+  const includeAnswerKey = getIncludeAnswerKeyChoice_(ui, "key-based");
   if (includeAnswerKey === null) {
-    showToast_('AI Feedback Generation Cancelled.', 'Info', 5);
+    showToast_('AI Commenting Cancelled.', 'Info', 5);
     return;
   }
-  Logger.log(`User chose to ${includeAnswerKey ? 'include' : 'omit'} answer key in feedback (overall key).`);
 
-
-  const userResponse = ui.alert("Confirm AI Feedback Generation",
-    `Generate AI comments for answers not receiving full marks, using 'Overall Answer Key' (Col C)?\nAnswer key will be ${includeAnswerKey ? 'INCLUDED' : 'OMITTED'} in the comment.`,
-    ui.ButtonSet.YES_NO);
-  if (userResponse !== ui.Button.YES) {
-    ui.alert("AI Feedback Generation Cancelled.", ui.ButtonSet.OK);
-    return;
-  }
+  ui.alert("AI Commenting Starting", "The script will generate feedback comments using Claude AI. This may take time.", ui.ButtonSet.OK);
   showToast_('Starting AI Comment Generation...', 'Processing...', -1);
 
   const { questionColumnsMap } = mainSheetHeaderInfo;
   const commentingModel = getSetting_("CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL);
 
   const lastRow = mainSheet.getLastRow();
-  const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
-  const studentDataValues = dataRange.getValues(); // Read all data once to check existing comments/grades
-  let commentsWritten = 0, errorsEncountered = 0;
+  if (lastRow < 2) { showToast_('No student rows found.', 'Info', 5); return; }
+  const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
 
+  let commentsWritten = 0, errorsEncountered = 0;
   let abortDueToAuthError = false;
+
   for (const [qId, qColInfo] of questionColumnsMap) {
     if (abortDueToAuthError) break;
+    const keyData = answerKeyDataMap[qId];
+    if (!keyData?.key) {
+      Logger.log(`No answer key for QID ${qId} in 'Answers' sheet. Skipping this question.`);
+      continue;
+    }
     const pointsPossible = qColInfo.points;
 
     for (let i = 0; i < studentDataValues.length; i++) {
       if (abortDueToAuthError) break;
-      const studentRowValues = studentDataValues[i];
-      const sheetRowNumber = i + 2;
+      const row = studentDataValues[i];
+      const sheetRow = i + 2;
 
-      const studentAnswer = studentRowValues[qColInfo.answerColIndex];
-      const studentGradeRaw = studentRowValues[qColInfo.gradeColIndex];
-      const currentComment = studentRowValues[qColInfo.commentColIndex];
+      const studentAnswer   = row[qColInfo.answerColIndex];
+      const studentGradeRaw = row[qColInfo.gradeColIndex];
+      const currentComment  = row[qColInfo.commentColIndex];
+
+      if (!studentAnswer || !String(studentAnswer).trim()) continue;
+      if (currentComment && String(currentComment).trim() !== "") continue;
 
       const studentGradeStr = String(studentGradeRaw ?? "").trim();
-      if (studentAnswer && String(studentAnswer).trim() && studentGradeStr &&
-          (!currentComment || String(currentComment).trim() === "")) {
-        const studentGrade = parseFloat(studentGradeStr);
-        if (!isNaN(studentGrade) && studentGrade < pointsPossible) {
-          const keyData = answerKeyDataMap[qId];
-          if (keyData?.key) {
-            showToast_(`Generating comment for QID ${qId}, row ${sheetRowNumber}...`, 'Processing...', -1);
-            Logger.log(`Requesting AI comment for QID ${qId}, row ${sheetRowNumber}. Grade: ${studentGrade}/${pointsPossible}`);
-            const apiResult = callClaudeAPIForCommenting_(keyData.prompt, keyData.key, String(studentAnswer), studentGrade, pointsPossible, claudeApiKey, commentingModel, includeAnswerKey);
+      const studentGrade = studentGradeStr !== "" ? parseFloat(studentGradeStr) : null;
+      if (studentGrade !== null && !isNaN(studentGrade) && studentGrade >= pointsPossible) {
+        Logger.log(`Skipping comment for QID ${qId}, Row ${sheetRow}: Student received full marks.`);
+        continue;
+      }
 
-            if (apiResult.isAuthError) {
-              abortDueToAuthError = true;
-              break;
-            }
+      showToast_(`Generating comment for QID ${qId}, row ${sheetRow}...`, 'Processing...', -1);
+      Logger.log(`AI comment for QID ${qId}, row ${sheetRow}. Grade: ${studentGrade !== null ? studentGrade : 'ungraded'}/${pointsPossible}`);
+      const apiResult = callClaudeAPIForCommenting_(
+        keyData.prompt, keyData.key, String(studentAnswer),
+        studentGrade, pointsPossible, claudeApiKey, commentingModel, includeAnswerKey
+      );
 
-            if (apiResult.comment) {
-              // Write immediately to the sheet — result is saved even if operation is interrupted later.
-              mainSheet.getRange(sheetRowNumber, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
-              SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
-              commentsWritten++;
-            } else {
-              Logger.log(`Claude did not return a valid comment for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
-              errorsEncountered++;
-            }
-          } else {
-            Logger.log(`No answer key for QID ${qId}. Skipping AI comment for row ${sheetRowNumber}.`);
-          }
-        }
+      if (apiResult.isAuthError) { abortDueToAuthError = true; break; }
+
+      if (apiResult.comment) {
+        mainSheet.getRange(sheetRow, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
+        SpreadsheetApp.flush();
+        commentsWritten++;
+      } else {
+        Logger.log(`No valid comment for QID ${qId}, row ${sheetRow}. Error: ${apiResult.errorMsg}`);
+        errorsEncountered++;
       }
     }
   }
 
   if (abortDueToAuthError) {
     handleClaudeAuthError_();
-    showToast_('Feedback generation aborted: API key error.', 'Error', 10);
-    ui.alert("Feedback Generation Aborted", `The Claude API rejected the key mid-operation.\nComments written before the error: ${commentsWritten}\n\nSee the previous alert for recovery instructions.`, ui.ButtonSet.OK);
+    showToast_('Commenting aborted: API key error.', 'Error', 10);
     return;
   }
 
-  showToast_('AI Comment Generation Complete!', 'Success', 10);
-  ui.alert("AI Comment Generation Complete", `Process finished.\nComments written: ${commentsWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
-  Logger.log(`AI Comment Generation Complete. Comments: ${commentsWritten}, Errors: ${errorsEncountered}`);
+  showToast_(`AI Comments Done! Written: ${commentsWritten}, Skipped/Errors: ${errorsEncountered}`, 'Success', 10);
+  ui.alert("AI Commenting Complete", `Finished generating comments.\nComments written: ${commentsWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
+  Logger.log(`generateAIComments complete. Written: ${commentsWritten}, Errors: ${errorsEncountered}`);
 }
 
 /**
@@ -248,10 +251,10 @@ function generateAIComments() {
  * are preserved if the operation is interrupted.
  */
 function aiRubricGrade() {
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   const ui = SpreadsheetApp.getUi();
-  if (["Answers", "Settings"].includes(mainSheet.getName())) {
-    ui.alert("Incorrect Sheet", "Please select main student data sheet.", ui.ButtonSet.OK);
+  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
+  if (!mainSheet) {
+    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
     return;
   }
   const context = initializeAIOperationContext_(mainSheet, true, false); // Needs rubricDataMap
@@ -344,100 +347,92 @@ function aiRubricGrade() {
 }
 
 /**
- * Generates AI comments for student answers based on rubric data.
- * Writes each comment to the sheet immediately after the API call, so partial results
- * are preserved if the operation is interrupted.
+ * Generates AI rubric-based feedback comments for student answers.
+ * Writes each comment to the sheet immediately after the API call.
  */
 function aiRubricComment() {
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   const ui = SpreadsheetApp.getUi();
-  if (["Answers", "Settings"].includes(mainSheet.getName())) {
-    ui.alert("Incorrect Sheet", "Please select main student data sheet.", ui.ButtonSet.OK);
+  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
+  if (!mainSheet) {
+    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
     return;
   }
-  const context = initializeAIOperationContext_(mainSheet, true, false); // Needs rubricDataMap
+  const context = initializeAIOperationContext_(mainSheet, true, false);
   if (!context) return;
 
   const { claudeApiKey, mainSheetHeaderInfo, rubricDataMap } = context;
-  if (!rubricDataMap || Object.keys(rubricDataMap).length === 0) {
-    return;
-  }
+  if (!rubricDataMap || Object.keys(rubricDataMap).length === 0) return;
 
   const includeAnswerKey = getIncludeAnswerKeyChoice_(ui, "rubric");
   if (includeAnswerKey === null) {
     showToast_('AI Rubric Commenting Cancelled.', 'Info', 5);
     return;
   }
-  Logger.log(`User chose to ${includeAnswerKey ? 'include' : 'omit'} overall answer key in rubric feedback.`);
 
-  const userResponse = ui.alert("Confirm AI Rubric-Based Commenting",
-    `Generate comments using rubrics from 'Answers' sheet?\nThe overall answer key (Col C) will be ${includeAnswerKey ? 'INCLUDED' : 'OMITTED'} at the start of the comment.\nComments generated for non-full scores where comment cell is empty.`,
-    ui.ButtonSet.YES_NO);
-  if (userResponse !== ui.Button.YES) {
-    ui.alert("AI Rubric Commenting Cancelled.", ui.ButtonSet.OK);
-    return;
-  }
-  showToast_('Starting AI Rubric Commenting...', 'Processing...', -1);
+  ui.alert("AI Rubric Commenting Starting", "The script will generate rubric-based feedback comments using Claude AI. This may take time.", ui.ButtonSet.OK);
+  showToast_('Starting AI Rubric Comment Generation...', 'Processing...', -1);
 
   const { questionColumnsMap } = mainSheetHeaderInfo;
   const commentingModel = getSetting_("CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL);
   const mainSheetHeaderValues = getHeaderValues_(mainSheet);
 
   const lastRow = mainSheet.getLastRow();
-  const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
-  const studentDataValues = dataRange.getValues(); // Read all data once to check existing comments/grades
-  let commentsWritten = 0, errorsEncountered = 0;
+  if (lastRow < 2) { showToast_('No student rows found.', 'Info', 5); return; }
+  const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
 
+  let commentsWritten = 0, errorsEncountered = 0;
   let abortDueToAuthError = false;
+
   for (const [qId, qColInfo] of questionColumnsMap) {
     if (abortDueToAuthError) break;
     const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
+    const rubricInfo = rubricDataMap[qId];
+
+    if (!rubricInfo || rubricInfo.canvasMaxPoints <= 0) {
+      Logger.log(`No rubric data or valid max points for QID ${qId}. Skipping this question.`);
+      continue;
+    }
+    if (!rubricInfo.overallKey) {
+      Logger.log(`No overall answer key (Col C) for QID ${qId} in 'Answers' sheet. Skipping this question.`);
+      continue;
+    }
 
     for (let i = 0; i < studentDataValues.length; i++) {
       if (abortDueToAuthError) break;
-      const studentRowValues = studentDataValues[i];
-      const sheetRowNumber = i + 2;
+      const row = studentDataValues[i];
+      const sheetRow = i + 2;
 
-      const studentAnswer = studentRowValues[qColInfo.answerColIndex];
-      const studentGradeRaw = studentRowValues[qColInfo.gradeColIndex];
-      const currentComment = studentRowValues[qColInfo.commentColIndex];
+      const studentAnswer   = row[qColInfo.answerColIndex];
+      const studentGradeRaw = row[qColInfo.gradeColIndex];
+      const currentComment  = row[qColInfo.commentColIndex];
+
+      if (!studentAnswer || !String(studentAnswer).trim()) continue;
+      if (currentComment && String(currentComment).trim() !== "") continue;
 
       const studentGradeStr = String(studentGradeRaw ?? "").trim();
-      if (studentAnswer && String(studentAnswer).trim() && studentGradeStr &&
-          (!currentComment || String(currentComment).trim() === "")) {
-        const studentGrade = parseFloat(studentGradeStr);
-        const rubricInfo = rubricDataMap[qId];
+      const studentGrade = studentGradeStr !== "" ? parseFloat(studentGradeStr) : null;
+      if (studentGrade !== null && !isNaN(studentGrade) && studentGrade >= rubricInfo.canvasMaxPoints) {
+        Logger.log(`Skipping comment for QID ${qId}, Row ${sheetRow}: Student received full marks.`);
+        continue;
+      }
 
-        if (rubricInfo?.canvasMaxPoints > 0 && !isNaN(studentGrade)) {
-          if (studentGrade < rubricInfo.canvasMaxPoints && rubricInfo.overallKey) {
-            showToast_(`AI Rubric Comment: QID ${qId} for row ${sheetRowNumber}...`, 'Processing...', -1);
-            Logger.log(`AI Rubric Comment: QID ${qId}, Row ${sheetRowNumber}. Grade: ${studentGrade}/${rubricInfo.canvasMaxPoints}`);
-            const apiResult = callClaudeAPIForRubricComment_(questionHeaderText, String(studentAnswer), rubricInfo.overallKey, studentGrade, rubricInfo.canvasMaxPoints, rubricInfo.criteria, claudeApiKey, commentingModel, includeAnswerKey);
+      showToast_(`AI Rubric Comment: QID ${qId} for row ${sheetRow}...`, 'Processing...', -1);
+      Logger.log(`AI rubric comment for QID ${qId}, row ${sheetRow}. Grade: ${studentGrade !== null ? studentGrade : 'ungraded'}/${rubricInfo.canvasMaxPoints}`);
+      const apiResult = callClaudeAPIForRubricComment_(
+        questionHeaderText, String(studentAnswer), rubricInfo.overallKey,
+        studentGrade, rubricInfo.canvasMaxPoints, rubricInfo.criteria,
+        claudeApiKey, commentingModel, includeAnswerKey
+      );
 
-            if (apiResult.isAuthError) {
-              abortDueToAuthError = true;
-              break;
-            }
+      if (apiResult.isAuthError) { abortDueToAuthError = true; break; }
 
-            if (apiResult.comment) {
-              // Write immediately to the sheet — result is saved even if operation is interrupted later.
-              mainSheet.getRange(sheetRowNumber, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
-              SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
-              commentsWritten++;
-            } else {
-              Logger.log(`Claude returned invalid rubric comment for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
-              errorsEncountered++;
-            }
-          } else if (!rubricInfo.overallKey) {
-            Logger.log(`Skipping comment for QID ${qId}, Row ${sheetRowNumber}: Missing Overall Answer Key in 'Answers' sheet (Col C).`);
-          } else {
-            Logger.log(`Skipping comment for QID ${qId}, Row ${sheetRowNumber}: Student received full marks.`);
-          }
-        } else if (!rubricInfo || rubricInfo.canvasMaxPoints <= 0) {
-          Logger.log(`No rubric data or valid max points for QID ${qId}. Skipping AI Rubric Comment for row ${sheetRowNumber}.`);
-        } else if (isNaN(studentGrade)) {
-          Logger.log(`Invalid grade for QID ${qId}, Row ${sheetRowNumber}: '${studentGradeRaw}'. Skipping AI Rubric Comment.`);
-        }
+      if (apiResult.comment) {
+        mainSheet.getRange(sheetRow, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
+        SpreadsheetApp.flush();
+        commentsWritten++;
+      } else {
+        Logger.log(`No valid rubric comment for QID ${qId}, row ${sheetRow}. Error: ${apiResult.errorMsg}`);
+        errorsEncountered++;
       }
     }
   }
@@ -445,11 +440,10 @@ function aiRubricComment() {
   if (abortDueToAuthError) {
     handleClaudeAuthError_();
     showToast_('Rubric commenting aborted: API key error.', 'Error', 10);
-    ui.alert("Rubric Commenting Aborted", `The Claude API rejected the key mid-operation.\nComments written before the error: ${commentsWritten}\n\nSee the previous alert for recovery instructions.`, ui.ButtonSet.OK);
     return;
   }
 
-  showToast_('AI Rubric Commenting Complete!', 'Success', 10);
-  ui.alert("AI Rubric Commenting Complete", `Process finished.\nComments written: ${commentsWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
-  Logger.log(`AI Rubric Commenting Complete. Comments: ${commentsWritten}, Errors: ${errorsEncountered}`);
+  showToast_(`AI Rubric Comments Done! Written: ${commentsWritten}, Skipped/Errors: ${errorsEncountered}`, 'Success', 10);
+  ui.alert("AI Rubric Commenting Complete", `Finished generating rubric-based comments.\nComments written: ${commentsWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
+  Logger.log(`aiRubricComment complete. Written: ${commentsWritten}, Errors: ${errorsEncountered}`);
 }
