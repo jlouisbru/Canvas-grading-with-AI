@@ -12,6 +12,8 @@ function stripHtml_(htmlString) {
   }
   return htmlString
     .replace(/<[^>]*>/g, '')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
     .replace(/&amp;/gi, '&')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&lt;/gi, '<')
@@ -84,6 +86,16 @@ function parseMainSheetHeader_(sheet, orderedQuestionIds) {
       }
     }
   });
+  // Warn about any answer-column QIDs whose Grade/Comment columns were not found at the expected offsets.
+  headerValues.forEach((headerText, i) => {
+    const qIdMatch = String(headerText).match(/\[Q ID: (\d+)\]/);
+    if (qIdMatch?.[1] && !String(headerText).includes(' Grade') && !String(headerText).includes(' Comment')) {
+      if (!questionColumnsMap.has(qIdMatch[1])) {
+        Logger.log(`Warning: QID ${qIdMatch[1]} found in header at col ${i + 1} but its Grade/Comment columns were not at the expected offsets (cols ${i + 2}, ${i + 3}). This question will be skipped by AI operations. Check for extra columns inserted between Answer, Grade, and Comment columns.`);
+      }
+    }
+  });
+
   return { userIdColIndex, questionColumnsMap };
 }
 
@@ -148,18 +160,20 @@ function writeToSheet_(sheet, sheetData, applyHeaderFitPlusPadding = false) {
   const columnWidthsToApply = [];
 
   if (applyHeaderFitPlusPadding) {
-    // 3a. Auto-resize columns based on the header content and store padded widths
+    // 3a. Resize all header columns in one API call, then read and pad each width.
+    try {
+      sheet.autoResizeColumns(1, numHeaderCols);
+    } catch (e) {
+      Logger.log(`Could not auto-resize columns for header on "${sheet.getName()}": ${e.message}.`);
+    }
     for (let i = 1; i <= numHeaderCols; i++) {
       try {
-        sheet.autoResizeColumn(i);
-        let currentWidth = sheet.getColumnWidth(i);
-        columnWidthsToApply.push(currentWidth + 8); // Add 8 pixels padding
+        columnWidthsToApply.push(sheet.getColumnWidth(i) + 8);
       } catch (e) {
-        Logger.log(`Could not auto-resize column ${i} for header on "${sheet.getName()}": ${e.message}. Using default width + padding.`);
-        columnWidthsToApply.push(100 + 8); // Default width (100px) + padding if resize fails
+        columnWidthsToApply.push(108); // Default 100px + 8px padding if read fails
       }
     }
-    Logger.log(`Auto-resized columns for headers, added padding, and stored widths for "${sheet.getName()}". Padded Widths: ${columnWidthsToApply.join(', ')}`);
+    Logger.log(`Auto-resized columns for headers and stored padded widths for "${sheet.getName()}". Padded Widths: ${columnWidthsToApply.join(', ')}`);
   }
   // If applyHeaderFitPlusPadding is false, columnWidthsToApply remains empty, and step 5 for resizing won't run.
 

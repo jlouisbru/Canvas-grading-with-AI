@@ -37,6 +37,26 @@ function getSetting_(settingName, defaultValue) {
 }
 
 /**
+ * Clears the settings cache, forcing a re-read of the Settings sheet on the next getSetting_ call.
+ * Use this instead of directly nullifying _settingsCache from other files.
+ * @private
+ */
+function clearSettingsCache_() {
+  _settingsCache = null;
+}
+
+/**
+ * Updates a single entry in the settings cache without clearing it.
+ * Use this to keep the cache consistent after writing a masked value back to the sheet.
+ * @param {string} key The setting name (Column A value).
+ * @param {any} value The new value to store in the cache.
+ * @private
+ */
+function updateSettingsCache_(key, value) {
+  if (_settingsCache) _settingsCache.set(key, value);
+}
+
+/**
  * Gets configuration values from the "Settings" sheet.
  * @returns {object|null} Configuration object or null on error.
  * @private

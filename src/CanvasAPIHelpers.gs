@@ -154,9 +154,12 @@ function fetchCanvasAPI_(canvasBaseUrl, path, apiKey, params = {}, method = 'get
 
 /**
  * Retrieves the Canvas Quiz ID from the Assignment ID.
+ * Returns both the quiz ID and any resolved assignment ID (which may differ from the
+ * quiz ID when a quiz URL is provided). Callers that need the submissions endpoint
+ * should use resolvedAssignmentId to update their config explicitly.
  * @param {string} apiKey Canvas API Key.
  * @param {object} config Configuration object (courseId, assignmentId, canvasBaseUrl).
- * @returns {string|null} The Quiz ID or null if not found.
+ * @returns {{quizId: string, resolvedAssignmentId: string|null}|null} Result object or null if quiz ID cannot be determined.
  * @private
  */
 function getQuizIdFromAssignment_(apiKey, config) {
@@ -165,11 +168,12 @@ function getQuizIdFromAssignment_(apiKey, config) {
   if (config.quizIdFromUrl) {
     const quizId = config.quizIdFromUrl;
     Logger.log(`Quiz URL provided. Fetching quiz details for Quiz ID ${quizId} to resolve assignment_id...`);
+    let resolvedAssignmentId = null;
     try {
       const quizDetails = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/quizzes/${quizId}`, apiKey);
       if (quizDetails?.assignment_id) {
-        config.assignmentId = String(quizDetails.assignment_id);
-        Logger.log(`Resolved assignment ID ${config.assignmentId} from Quiz ID ${quizId}.`);
+        resolvedAssignmentId = String(quizDetails.assignment_id);
+        Logger.log(`Resolved assignment ID ${resolvedAssignmentId} from Quiz ID ${quizId}.`);
       } else {
         Logger.log(`Warning: Could not resolve assignment ID from Quiz ID ${quizId}. Submissions endpoint may fail.`);
       }
@@ -177,25 +181,25 @@ function getQuizIdFromAssignment_(apiKey, config) {
       if (e.isCanvasAuthError) throw e;
       Logger.log(`Failed to fetch quiz details for Quiz ID ${quizId}: ${e.message}`);
     }
-    return quizId;
+    return { quizId, resolvedAssignmentId };
   }
 
   // config.assignmentId is always a plain numeric ID at this point (normalized in getConfigFromSheet_).
-  const resolvedAssignmentId = String(config.assignmentId).trim();
+  const plainAssignmentId = String(config.assignmentId).trim();
 
   // Case 2: Plain assignment ID — call assignments API.
-  Logger.log(`Fetching assignment details for Assignment ID: ${resolvedAssignmentId}`);
+  Logger.log(`Fetching assignment details for Assignment ID: ${plainAssignmentId}`);
   try {
-    const assignmentDetails = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/assignments/${resolvedAssignmentId}`, apiKey);
+    const assignmentDetails = fetchCanvasAPI_(config.canvasBaseUrl, `/api/v1/courses/${config.courseId}/assignments/${plainAssignmentId}`, apiKey);
     if (!assignmentDetails?.quiz_id) {
-      Logger.log(`Warning: Could not find Quiz ID for Assignment ID ${resolvedAssignmentId}. This assignment may not be a quiz, or the API response was unexpected.`);
+      Logger.log(`Warning: Could not find Quiz ID for Assignment ID ${plainAssignmentId}. This assignment may not be a quiz, or the API response was unexpected.`);
       return null;
     }
     Logger.log(`Found Quiz ID: ${assignmentDetails.quiz_id}`);
-    return String(assignmentDetails.quiz_id);
+    return { quizId: String(assignmentDetails.quiz_id), resolvedAssignmentId: null };
   } catch (e) {
     if (e.isCanvasAuthError) throw e;
-    Logger.log(`Failed to get assignment details for assignment ${resolvedAssignmentId}: ${e.message}`);
+    Logger.log(`Failed to get assignment details for assignment ${plainAssignmentId}: ${e.message}`);
     return null;
   }
 }
@@ -343,17 +347,11 @@ function fetchAndMapQuizSubmissions_(apiKey, config, quizId) {
     return null;
   }
 
-  let submissionsArray;
-  if (quizSubmissionsResponse && quizSubmissionsResponse.quiz_submissions && Array.isArray(quizSubmissionsResponse.quiz_submissions)) {
-    submissionsArray = quizSubmissionsResponse.quiz_submissions;
-  } else if (Array.isArray(quizSubmissionsResponse)) {
-      Logger.log("Quiz submissions response was a direct array.");
-      submissionsArray = quizSubmissionsResponse;
-  }
-  else {
-    Logger.log(`Invalid or empty response for quiz submissions for quiz ${quizId}. Response type: ${typeof quizSubmissionsResponse}, Content: ${JSON.stringify(quizSubmissionsResponse).substring(0,100)}`);
+  if (!Array.isArray(quizSubmissionsResponse)) {
+    Logger.log(`Invalid or empty response for quiz submissions for quiz ${quizId}. Type: ${typeof quizSubmissionsResponse}`);
     return null;
   }
+  const submissionsArray = quizSubmissionsResponse;
 
   const userQuizSubmissionMap = {};
   submissionsArray.forEach(qs => {

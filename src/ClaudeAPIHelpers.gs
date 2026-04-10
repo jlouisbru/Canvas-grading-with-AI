@@ -24,10 +24,24 @@ function callClaudeAPIMessages_(payload, apiKey, callingFunctionName = "Claude A
   let success = false;
   let isAuthError = false;
 
-  Logger.log(`${callingFunctionName}: Calling Claude. Model: ${payload.model}. Max Tokens: ${payload.max_tokens}. User Message (first 100 chars): ${payload.messages[0]?.content?.substring(0,100)}`);
+  Logger.log(`${callingFunctionName}: Calling Claude. Model: ${payload.model}. Max Tokens: ${payload.max_tokens}.`);
 
   try {
-    const response = UrlFetchApp.fetch(claudeApiUrl, options);
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS_MS = [5000, 15000, 30000];
+    let attempt = 0;
+    let response;
+    while (attempt < MAX_RETRIES) {
+      response = UrlFetchApp.fetch(claudeApiUrl, options);
+      const code = response.getResponseCode();
+      if (code !== 429 && code !== 529) break;
+      if (attempt < MAX_RETRIES - 1) {
+        Logger.log(`${callingFunctionName}: Rate limit/overload (${code}). Retrying in ${RETRY_DELAYS_MS[attempt] / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES}).`);
+        Utilities.sleep(RETRY_DELAYS_MS[attempt]);
+      }
+      attempt++;
+    }
+
     const responseCode = response.getResponseCode();
     rawResponse = response.getContentText();
 
@@ -57,33 +71,58 @@ function callClaudeAPIMessages_(payload, apiKey, callingFunctionName = "Claude A
 }
 
 /**
- * Generates the generosity instruction string for Claude prompts.
- * @param {number} generosityLevel The user-selected generosity level (1-5).
- * @returns {string} The instruction string.
+ * Generates structured scoring instructions for Claude prompts based on generosity level.
+ *
+ * For key-based grading ('key' mode): Claude first estimates concept coverage (0–100%),
+ * then applies a level-specific lookup table to determine the score.
+ *
+ * For rubric grading ('rubric' mode): generosity sets the coverage threshold at which
+ * a criterion is considered MET (binary: full points or 0 per criterion).
+ *
+ * @param {number} generosityLevel The user-selected generosity level (1–5).
+ * @param {'key'|'rubric'} [mode='key'] Grading mode.
+ * @returns {string} The instruction string to append to the prompt.
  * @private
  */
-function getGenerosityPromptSegment_(generosityLevel) {
-  let generosityDescription = "";
-  switch (generosityLevel) {
-    case 1:
-      generosityDescription = "Level 1 (Very Strict): The student's answer must align almost perfectly with the key/rubric criteria. Deduct significantly for any deviation, omission, or imprecision. Partial credit should be minimal.";
-      break;
-    case 2:
-      generosityDescription = "Level 2 (Strict): The student's answer must closely align with the key/rubric criteria. Deduct for deviations, omissions, or imprecision, but allow for very minor flexibility.";
-      break;
-    case 3:
-      generosityDescription = "Level 3 (Normal/Balanced): Evaluate the answer fairly against the key/rubric criteria. Award partial credit for correct components and penalize for incorrect or missing components proportionately.";
-      break;
-    case 4:
-      generosityDescription = "Level 4 (Generous): Be more lenient if the student's answer captures the main concepts of the key/rubric criteria, even if some details are missing or not perfectly expressed. Award more partial credit.";
-      break;
-    case 5:
-      generosityDescription = "Level 5 (Very Generous - EXTREMELY LENIENT): Award FULL POINTS unless the answer is completely off-topic or fails to address the question at all. If the student demonstrates ANY understanding or makes ANY reasonable attempt to answer the question, they should receive full credit. Minor errors, omissions, incomplete explanations, or imperfect wording should NOT reduce the score. The student must essentially not answer the question or provide a completely irrelevant response to lose points. When in doubt, award full points.";
-      break;
-    default: // Should not happen if validated, but fallback to normal
-      generosityDescription = "Level 3 (Normal/Balanced): Defaulting to normal generosity. Evaluate the answer fairly.";
+function getGenerosityPromptSegment_(generosityLevel, mode = 'key') {
+  if (mode === 'rubric') {
+    // Threshold = minimum concept coverage % for a criterion to be called MET.
+    const thresholds = { 1: 85, 2: 70, 3: 55, 4: 35, 5: 15 };
+    const threshold = thresholds[generosityLevel] ?? 55;
+    return `\n\nGenerosity Level ${generosityLevel} — criterion threshold:
+A criterion is MET (award its full point value) if the student's answer addresses ≥${threshold}% of that criterion's stated requirements.
+A criterion is NOT MET (award 0 points) if the student addresses <${threshold}% of it.
+Apply this threshold consistently to every criterion.`;
   }
-  return `\n\nA generosity level has been set for this grading task: ${generosityDescription}\nApply this generosity level consistently when determining the score.`;
+
+  // Key-based grading: two-step scoring via explicit coverage table.
+  const configs = {
+    1: { label: 'Very Strict',  full: 90, high: 70, mid: 50, low: 30 },
+    2: { label: 'Strict',       full: 75, high: 55, mid: 35, low: 15 },
+    3: { label: 'Normal',       full: 60, high: 40, mid: 20, low: 5  },
+    4: { label: 'Generous',     full: 40, high: 25, mid: 10, low: 1  },
+    5: { label: 'Very Generous',full: 10, high: null, mid: null, low: null },
+  };
+  const c = configs[generosityLevel] ?? configs[3];
+
+  const tableLines = (generosityLevel === 5)
+    ? [
+        `  Coverage ≥${c.full}% → full points`,
+        `  Coverage <${c.full}% → 0 points`,
+      ]
+    : [
+        `  Coverage ≥${c.full}% → 100% of points (full credit)`,
+        `  Coverage ${c.high}–${c.full - 1}% → 75% of points`,
+        `  Coverage ${c.mid}–${c.high - 1}% → 50% of points`,
+        `  Coverage ${c.low}–${c.mid - 1}% → 25% of points`,
+        `  Coverage <${c.low}% → 0 points`,
+      ];
+
+  return `\n\nGenerosity Level ${generosityLevel} (${c.label}) — Scoring instructions:
+Step 1: Estimate what percentage (0–100%) of the answer key's key concepts the student's answer addresses. Base this on conceptual accuracy only — not wording, length, or style.
+Step 2: Convert that coverage estimate to a score using this table:
+${tableLines.join('\n')}
+Apply this table mechanically. Do not adjust the score outside these tiers.`;
 }
 
 /**
@@ -99,7 +138,7 @@ function getGenerosityPromptSegment_(generosityLevel) {
  * @private
  */
 function callClaudeAPIForGrading_(questionPrompt, answerKey, studentAnswer, pointsPossible, apiKey, modelName, generosityLevel) {
-  const generosityInstruction = getGenerosityPromptSegment_(generosityLevel);
+  const generosityInstruction = getGenerosityPromptSegment_(generosityLevel, 'key');
   const promptSentToAI = `You are an AI grading assistant. A student provided an answer to a question. Compare it to the answer key and provide a numerical grade. The question is worth ${pointsPossible} points.\nStrictly follow these instructions:\n1. Your response MUST be ONLY the numerical grade (e.g., "1", "0.5", "0").\n2. Do NOT provide any explanation or any other text besides the numerical grade.\n3. If the student's answer is fully correct according to the key, award full points.\n4. If the student's answer is partially correct, award partial points based on the alignment with the key.\n5. If the student's answer is completely incorrect or irrelevant, award 0 points.\n6. The grade must not exceed ${pointsPossible} points. The grade must not be less than 0.\n${generosityInstruction}\n\nQuestion Context: "${questionPrompt}"\nAnswer Key: "${answerKey}"\nStudent's Answer: "${studentAnswer}"\nPoints Possible: ${pointsPossible}`;
   const payload = { model: modelName, max_tokens: 20, messages: [{ "role": "user", "content": promptSentToAI }] };
 
@@ -187,7 +226,7 @@ ${gradeInfo}Please provide a feedback comment based on these details, following 
  * @private
  */
 function callClaudeAPIForRubricGrade_(questionText, studentAnswer, questionMaxPoints, rubricCriteria, apiKey, modelName, generosityLevel) {
-  const generosityInstruction = getGenerosityPromptSegment_(generosityLevel);
+  const generosityInstruction = getGenerosityPromptSegment_(generosityLevel, 'rubric');
   let promptSystem = `You are an AI grading assistant. Your task is to assess a student's answer based on a detailed rubric and provide ONLY a numerical grade.
 Strictly follow these instructions:
 1.  You will receive: the question text, the student's answer, the total maximum points for the question, and a list of rubric criteria (each with a description and maximum points for that criterion).
@@ -203,7 +242,7 @@ Strictly follow these instructions:
     b.  The overall grade MUST NOT exceed the question's total maximum points (${questionMaxPoints}). If your sum of criteria scores exceeds this, cap the overall grade at ${questionMaxPoints}. If the sum is less than 0, the grade should be 0.
     c.  Because you are using discrete scoring (0 or full points per criterion), the final grade will be one of the valid combinations of criterion points (e.g., for two 1-point criteria, valid grades are: 0, 1, or 2 only).
 4.  Output Format: Your response MUST be ONLY the final numerical overall grade (e.g., "1", "2", "0"). Do NOT provide any explanation, prefix, suffix, or any other text besides the numerical grade.
-${generosityInstruction.replace("key/rubric criteria", "rubric criteria")}`;
+${generosityInstruction}`;
 
   let promptUser = `Please provide a numerical grade for the following student answer:\n\nQuestion: "${questionText}"\nStudent's Answer: "${studentAnswer}"\n\nTotal Maximum Points for this Question: ${questionMaxPoints}\n\nRubric Criteria:\n`;
   if (rubricCriteria && rubricCriteria.length > 0) {

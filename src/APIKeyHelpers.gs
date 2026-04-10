@@ -43,7 +43,7 @@ function maskSettingInSheet_(settingName) {
     for (let i = 0; i < data.length; i++) {
       if (String(data[i][0]).trim() === settingName) {
         settingsSheet.getRange(i + 1, 2).setValue("•••••");
-        if (_settingsCache) _settingsCache.set(settingName, "•••••");
+        updateSettingsCache_(settingName, "•••••");
         Logger.log(`Masked "${settingName}" in Settings sheet.`);
         break;
       }
@@ -62,7 +62,7 @@ function maskSettingInSheet_(settingName) {
  */
 function handleCanvasAuthError_() {
   clearStoredApiKey_("CANVAS_API_KEY", "Canvas");
-  _settingsCache = null; // Force re-read of Settings sheet on next key lookup
+  clearSettingsCache_();
   SpreadsheetApp.getUi().alert(
     "Canvas API Key Rejected (401)",
     "Canvas rejected your API key — it may be invalid, expired, or lack the required permissions.\n\n" +
@@ -86,7 +86,7 @@ function handleCanvasAuthError_() {
  */
 function handleClaudeAuthError_() {
   clearStoredApiKey_("CLAUDE_API_KEY", "Claude");
-  _settingsCache = null; // Force re-read of Settings sheet on next key lookup
+  clearSettingsCache_();
   SpreadsheetApp.getUi().alert(
     "Claude API Key Rejected (401)",
     "The Claude API rejected your key — it may be invalid, expired, or lack billing credits.\n\n" +
@@ -137,7 +137,7 @@ function getServiceApiKey_(serviceName, propertyKey, settingSheetKey, promptTitl
 
   // 2. Re-check the Settings sheet (catches newly pasted keys, e.g. after a key reset).
   //    Force-clear the cache so we read the current sheet state, not a stale cached value.
-  _settingsCache = null;
+  clearSettingsCache_();
   const rawSheetKey = getSetting_(settingSheetKey, null);
   const sheetKey = sanitizeApiKey_(String(rawSheetKey || ''));
   if (sheetKey) {
@@ -205,7 +205,7 @@ function resetClaudeApiKey() {
   );
   if (confirm === ui.Button.YES) {
     clearStoredApiKey_("CLAUDE_API_KEY", "Claude");
-    _settingsCache = null; // Force re-read of Settings sheet on next access
+    clearSettingsCache_();
     ui.alert("Done", "Claude API key cleared. Paste a new key into the 'Settings' sheet or re-run a grading operation to be prompted.", ui.ButtonSet.OK);
   }
 }
@@ -228,7 +228,7 @@ function resetCanvasApiKey() {
   );
   if (confirm === ui.Button.YES) {
     clearStoredApiKey_("CANVAS_API_KEY", "Canvas");
-    _settingsCache = null; // Force re-read of Settings sheet on next access
+    clearSettingsCache_();
     ui.alert("Done", "Canvas API key cleared. Paste a new key into the 'Settings' sheet or re-run a Canvas operation to be prompted.", ui.ButtonSet.OK);
   }
 }

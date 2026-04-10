@@ -8,7 +8,7 @@
  */
 function getGradingGenerosityLevel_(ui) {
   const promptTitle = "Set Grading Generosity";
-  const promptMessage = "Enter grading generosity (1-5):\n\n1: Very Strict (exact match to key/rubric)\n2: Strict\n3: Normal/Balanced (default)\n4: Generous\n5: Very Generous (main concepts suffice)\n\nEnter a number between 1 and 5:";
+  const promptMessage = "Enter grading generosity (1-5):\n\n1: Very Strict   — full credit requires ≥90% of key concepts\n2: Strict        — full credit requires ≥75% of key concepts\n3: Normal        — full credit requires ≥60% of key concepts (default)\n4: Generous      — full credit requires ≥40% of key concepts\n5: Very Generous — full credit for any answer covering ≥10% of concepts\n\nEnter a number between 1 and 5:";
   const response = ui.prompt(promptTitle, promptMessage, ui.ButtonSet.OK_CANCEL);
 
   if (response.getSelectedButton() === ui.Button.OK) {
@@ -64,14 +64,18 @@ function autoGradeWithClaude() {
   const lastRow = mainSheet.getLastRow();
   const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
   const studentDataValues = dataRange.getValues(); // Read all data once to check existing grades
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 300000; // 5 min — leaves ~1 min buffer before GAS hard-kills at 6 min
+  let timedOut = false;
   let gradesWritten = 0, errorsEncountered = 0;
 
   let abortDueToAuthError = false;
   for (const [qId, qColInfo] of questionColumnsMap) {
-    if (abortDueToAuthError) break;
+    if (timedOut || abortDueToAuthError) break;
     const pointsPossible = qColInfo.points;
 
     for (let i = 0; i < studentDataValues.length; i++) {
+      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const studentRowValues = studentDataValues[i];
       const sheetRowNumber = i + 2;
@@ -106,6 +110,12 @@ function autoGradeWithClaude() {
         }
       }
     }
+  }
+
+  if (timedOut) {
+    showToast_('Time limit reached. Re-run to continue — already-graded cells will be skipped.', 'Paused', 15);
+    ui.alert('Grading Paused', `The 5-minute time limit was reached.\n\nGrades written so far: ${gradesWritten}\n\nRe-run the operation — already-graded cells will be skipped automatically.`, ui.ButtonSet.OK);
+    return;
   }
 
   if (abortDueToAuthError) {
@@ -183,11 +193,14 @@ function generateAIComments() {
   if (lastRow < 2) { showToast_('No student rows found.', 'Info', 5); return; }
   const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
 
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 300000;
+  let timedOut = false;
   let commentsWritten = 0, errorsEncountered = 0;
   let abortDueToAuthError = false;
 
   for (const [qId, qColInfo] of questionColumnsMap) {
-    if (abortDueToAuthError) break;
+    if (timedOut || abortDueToAuthError) break;
     const keyData = answerKeyDataMap[qId];
     if (!keyData?.key) {
       Logger.log(`No answer key for QID ${qId} in 'Answers' sheet. Skipping this question.`);
@@ -196,6 +209,7 @@ function generateAIComments() {
     const pointsPossible = qColInfo.points;
 
     for (let i = 0; i < studentDataValues.length; i++) {
+      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const row = studentDataValues[i];
       const sheetRow = i + 2;
@@ -232,6 +246,12 @@ function generateAIComments() {
         errorsEncountered++;
       }
     }
+  }
+
+  if (timedOut) {
+    showToast_('Time limit reached. Re-run to continue — already-commented cells will be skipped.', 'Paused', 15);
+    ui.alert('Commenting Paused', `The 5-minute time limit was reached.\n\nComments written so far: ${commentsWritten}\n\nRe-run the operation — already-commented cells will be skipped automatically.`, ui.ButtonSet.OK);
+    return;
   }
 
   if (abortDueToAuthError) {
@@ -288,14 +308,18 @@ function aiRubricGrade() {
   const lastRow = mainSheet.getLastRow();
   const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
   const studentDataValues = dataRange.getValues(); // Read all data once to check existing grades
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 300000;
+  let timedOut = false;
   let gradesWritten = 0, errorsEncountered = 0;
 
   let abortDueToAuthError = false;
   for (const [qId, qColInfo] of questionColumnsMap) {
-    if (abortDueToAuthError) break;
+    if (timedOut || abortDueToAuthError) break;
     const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
 
     for (let i = 0; i < studentDataValues.length; i++) {
+      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const studentRowValues = studentDataValues[i];
       const sheetRowNumber = i + 2;
@@ -334,6 +358,12 @@ function aiRubricGrade() {
     }
   }
 
+  if (timedOut) {
+    showToast_('Time limit reached. Re-run to continue — already-graded cells will be skipped.', 'Paused', 15);
+    ui.alert('Rubric Grading Paused', `The 5-minute time limit was reached.\n\nGrades written so far: ${gradesWritten}\n\nRe-run the operation — already-graded cells will be skipped automatically.`, ui.ButtonSet.OK);
+    return;
+  }
+
   if (abortDueToAuthError) {
     handleClaudeAuthError_();
     showToast_('Rubric grading aborted: API key error.', 'Error', 10);
@@ -363,6 +393,22 @@ function aiRubricComment() {
   const { claudeApiKey, mainSheetHeaderInfo, rubricDataMap } = context;
   if (!rubricDataMap || Object.keys(rubricDataMap).length === 0) return;
 
+  const { questionColumnsMap } = mainSheetHeaderInfo;
+
+  // Fix 8: Pre-loop scan — warn user about questions with rubric criteria but no overallKey.
+  const questionsWithoutKey = [...questionColumnsMap.keys()].filter(qId => {
+    const r = rubricDataMap[qId];
+    return r && r.canvasMaxPoints > 0 && !r.overallKey;
+  });
+  if (questionsWithoutKey.length > 0) {
+    const proceed = ui.alert(
+      'Missing Overall Answer Key',
+      `${questionsWithoutKey.length} question(s) have rubric criteria but no Overall Answer Key (Column C of "Answers" sheet):\n\nQID(s): ${questionsWithoutKey.join(', ')}\n\nThese will be skipped. Continue for the remaining questions?`,
+      ui.ButtonSet.YES_NO
+    );
+    if (proceed !== ui.Button.YES) { showToast_('Cancelled.', 'Info', 5); return; }
+  }
+
   const includeAnswerKey = getIncludeAnswerKeyChoice_(ui, "rubric");
   if (includeAnswerKey === null) {
     showToast_('AI Rubric Commenting Cancelled.', 'Info', 5);
@@ -372,7 +418,6 @@ function aiRubricComment() {
   ui.alert("AI Rubric Commenting Starting", "The script will generate rubric-based feedback comments using Claude AI. This may take time.", ui.ButtonSet.OK);
   showToast_('Starting AI Rubric Comment Generation...', 'Processing...', -1);
 
-  const { questionColumnsMap } = mainSheetHeaderInfo;
   const commentingModel = getSetting_("CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL);
   const mainSheetHeaderValues = getHeaderValues_(mainSheet);
 
@@ -380,11 +425,14 @@ function aiRubricComment() {
   if (lastRow < 2) { showToast_('No student rows found.', 'Info', 5); return; }
   const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
 
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 300000;
+  let timedOut = false;
   let commentsWritten = 0, errorsEncountered = 0;
   let abortDueToAuthError = false;
 
   for (const [qId, qColInfo] of questionColumnsMap) {
-    if (abortDueToAuthError) break;
+    if (timedOut || abortDueToAuthError) break;
     const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
     const rubricInfo = rubricDataMap[qId];
 
@@ -398,6 +446,7 @@ function aiRubricComment() {
     }
 
     for (let i = 0; i < studentDataValues.length; i++) {
+      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const row = studentDataValues[i];
       const sheetRow = i + 2;
@@ -435,6 +484,12 @@ function aiRubricComment() {
         errorsEncountered++;
       }
     }
+  }
+
+  if (timedOut) {
+    showToast_('Time limit reached. Re-run to continue — already-commented cells will be skipped.', 'Paused', 15);
+    ui.alert('Rubric Commenting Paused', `The 5-minute time limit was reached.\n\nComments written so far: ${commentsWritten}\n\nRe-run the operation — already-commented cells will be skipped automatically.`, ui.ButtonSet.OK);
+    return;
   }
 
   if (abortDueToAuthError) {

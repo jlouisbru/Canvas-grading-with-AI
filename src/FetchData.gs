@@ -62,10 +62,11 @@ function fetchAndPopulateQuestionPrompts() {
 
     showToast_('Fetching question prompts from Canvas...', 'Processing...', -1);
 
-    const quizId = getQuizIdFromAssignment_(canvasApiKey, config);
-    if (!quizId) {
+    const quizResult = getQuizIdFromAssignment_(canvasApiKey, config);
+    if (!quizResult) {
       throw new Error(`Could not determine Quiz ID from Assignment ID ${config.assignmentId}.`);
     }
+    const quizId = quizResult.quizId;
 
     const { questionMap: canvasQuestionMap, orderedQuestionIds: canvasOrderedQIds } = getEssayQuestions_(canvasApiKey, config, quizId);
 
@@ -190,11 +191,14 @@ function fetchAndPopulateQuizResponses() {
     }
     showToast_('Config OK. Fetching Canvas Data...', 'Processing...', -1); // Essential: Start of Canvas interaction
 
-    const quizId = getQuizIdFromAssignment_(canvasApiKey, config);
-    if (!quizId) {
+    const quizResult = getQuizIdFromAssignment_(canvasApiKey, config);
+    if (!quizResult) {
       showToast_('Error: Could not determine Quiz ID.', 'Error', 7);
       throw new Error(`Could not determine Quiz ID from Assignment ID ${config.assignmentId}.`);
     }
+    const quizId = quizResult.quizId;
+    // If a quiz URL was provided, use the resolved assignment ID for the submissions endpoint.
+    if (quizResult.resolvedAssignmentId) config.assignmentId = quizResult.resolvedAssignmentId;
 
     const { questionMap, orderedQuestionIds } = getEssayQuestions_(canvasApiKey, config, quizId);
 
@@ -262,7 +266,14 @@ function fetchAndPopulateQuizResponses() {
             const hasGrade = gradeCell !== undefined && String(gradeCell).trim() !== "";
             if (!qCols || !hasAnswer || !hasGrade) { isRowCompleteForFetching = false; break; }
           }
-          if (isRowCompleteForFetching) { fullyPopulatedStudentRows.set(userId, rowValues); }
+          // Also preserve any row that has at least one non-empty comment, so mid-workflow
+          // state (answers + comments, no grades yet) is not silently overwritten.
+          const hasAnyComment = orderedQuestionIds.some(qId => {
+            const qCols = questionColumnsMap.get(qId);
+            const commentCell = (qCols && qCols.commentColIndex !== undefined && rowValues.length > qCols.commentColIndex) ? rowValues[qCols.commentColIndex] : undefined;
+            return commentCell !== undefined && String(commentCell).trim() !== "";
+          });
+          if (isRowCompleteForFetching || hasAnyComment) { fullyPopulatedStudentRows.set(userId, rowValues); }
         }
       });
       Logger.log(`Found ${fullyPopulatedStudentRows.size} students with complete answer/grade data on sheet.`);
@@ -354,10 +365,11 @@ function fetchAndPopulateQuizResponses() {
     showToast_('Fetch Complete! Sheet updated.', 'Success', 10);
     ui.alert('Fetch Complete (Main Sheet)',
       `Student data processed for the sheet "${mainSheetName}".\n` +
-      `Preserved complete rows: ${preservedCount}\n` +
+      `Preserved rows (complete or with existing comments): ${preservedCount}\n` +
       `Updated/New rows from Canvas: ${updatedCount + newCount}\n\n` +
+      `Note: Rows with answers but no grades and no comments were refreshed from Canvas.\n` +
       `"Student Name (Sortable)" and "Canvas User ID" columns are now ensured.\n` +
-      `Column widths set to fit headers with additional padding.\n`+
+      `Column widths set to fit headers with additional padding.\n` +
       `Grades and comments (if available) from Canvas have been included.\n` +
       `Check sheet and Logs (View > Logs) for details.`,
       ui.ButtonSet.OK);

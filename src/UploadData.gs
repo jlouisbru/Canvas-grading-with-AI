@@ -51,10 +51,11 @@ function uploadEssayGradesToCanvas() {
     }
     Logger.log(`Found details for ${Object.keys(questionDetailsMap).length} questions for upload.`);
 
-    const quizId = getQuizIdFromAssignment_(apiKey, config);
-    if (!quizId) {
+    const quizResult = getQuizIdFromAssignment_(apiKey, config);
+    if (!quizResult) {
       throw new Error("Cannot upload: Failed to determine Quiz ID.");
     }
+    const quizId = quizResult.quizId;
 
     const confirm = ui.alert('Confirm Grade & Comment Upload',
       `Upload grades AND comments for ${studentDataRows.length} students from sheet "${sheet.getName()}"?\n` +
@@ -115,7 +116,7 @@ function uploadEssayGradesToCanvas() {
             }
           }
         }
-        if (hasDataToUpload) questionsPayload[qId] = questionUpdateData;
+        if (hasDataToUpload) questionsPayload[`question_${qId}`] = questionUpdateData;
       });
 
       if (Object.keys(questionsPayload).length > 0) {
