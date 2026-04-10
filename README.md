@@ -311,7 +311,21 @@ If you find this tool helpful, please:
 
 ## 📊 Changelog
 
-### Current Version (v1.0.0)
+### v1.0.1 (2026-04-10)
+- **Fix**: Canvas grade upload now correctly sends grades to Canvas (payload key prefix `question_` was missing, causing uploads to silently have no effect)
+- **Fix**: Preserve rows with existing AI comments when re-fetching quiz responses from Canvas
+- **Fix**: Removed student answer text from Apps Script execution logs (FERPA compliance)
+- **Improvement**: 5-minute runtime guard added to all four AI grading functions — GAS execution limit is handled gracefully; re-running the operation skips already-graded cells automatically
+- **Improvement**: Claude API calls now retry automatically on rate-limit (429) and overload (529) responses (up to 3 attempts)
+- **Improvement**: `aiRubricComment` now warns before running if any questions are missing an Overall Answer Key, and lets you choose to continue with the remaining questions
+- **Improvement**: Warn in logs when question header columns have misaligned Grade/Comment pairs that would cause them to be silently skipped
+- **Fix**: Removed redundant double-unwrap of Canvas quiz submissions API response
+- **Refactor**: `getQuizIdFromAssignment_` returns a value instead of mutating the config object in place
+- **Refactor**: Settings cache mutations encapsulated behind `clearSettingsCache_()` / `updateSettingsCache_()` helpers
+- **Performance**: Column auto-resize in sheet writes uses a single batch API call instead of one call per column
+- **Fix**: `stripHtml_` now correctly decodes numeric HTML entities (`&#160;`, `&#x2019;`, etc.)
+
+### v1.0.0
 - Initial public release
 - Three-menu system for organized workflow
 - Essay question grading support
