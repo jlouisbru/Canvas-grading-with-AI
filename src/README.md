@@ -10,33 +10,39 @@ These files work together to provide AI-powered grading and feedback for Canvas 
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [Constants.gs](Constants.gs) | ~10 | Configuration constants and defaults |
+| [Constants.gs](Constants.gs) | ~20 | Configuration constants, model defaults, retry policy |
 | [Toast.gs](Toast.gs) | ~10 | Toast notification helper functions |
-| [ConfigHelpers.gs](ConfigHelpers.gs) | ~80 | Settings and configuration management |
-| [APIKeyHelpers.gs](APIKeyHelpers.gs) | ~100 | Secure API key storage and retrieval |
+| [ConfigHelpers.gs](ConfigHelpers.gs) | ~120 | Settings and configuration management |
+| [APIKeyHelpers.gs](APIKeyHelpers.gs) | ~230 | Secure API key storage and retrieval |
 
 ### Integration Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [CanvasAPIHelpers.gs](CanvasAPIHelpers.gs) | ~500 | Canvas LMS API integration |
-| [ClaudeAPIHelpers.gs](ClaudeAPIHelpers.gs) | ~280 | Claude AI API integration |
+| [CanvasAPIHelpers.gs](CanvasAPIHelpers.gs) | ~370 | Canvas LMS API integration |
+| [ClaudeAPIHelpers.gs](ClaudeAPIHelpers.gs) | ~400 | Claude AI API integration (prompts, retries, response parsing) |
 
 ### Utility Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [SheetUtilities.gs](SheetUtilities.gs) | ~300 | Google Sheets utilities & menu system |
-| [SheetProcessingHelpers.gs](SheetProcessingHelpers.gs) | ~350 | Data processing and parsing |
-| [AIOperationContext.gs](AIOperationContext.gs) | ~150 | Context initialization for AI operations |
+| [SheetUtilities.gs](SheetUtilities.gs) | ~190 | Google Sheets utilities & menu system |
+| [SheetProcessingHelpers.gs](SheetProcessingHelpers.gs) | ~270 | Data processing and parsing |
+| [AIOperationContext.gs](AIOperationContext.gs) | ~80 | Context initialization for AI operations |
 
 ### Feature Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [FetchData.gs](FetchData.gs) | ~365 | Fetch questions and submissions from Canvas |
-| [GradingTools.gs](GradingTools.gs) | ~370 | AI grading and feedback generation |
-| [UploadData.gs](UploadData.gs) | ~200 | Upload grades and comments to Canvas |
+| [FetchData.gs](FetchData.gs) | ~380 | Fetch questions and submissions from Canvas |
+| [GradingTools.gs](GradingTools.gs) | ~510 | AI grading and feedback generation |
+| [UploadData.gs](UploadData.gs) | ~150 | Upload grades and comments to Canvas |
+
+### Project Manifest
+
+| File | Purpose |
+|------|---------|
+| [appsscript.json](appsscript.json) | Apps Script manifest (V8 runtime, time zone). Lets you deploy with [`clasp push`](https://github.com/google/clasp). |
 
 ## 🚀 Installation
 
@@ -56,6 +62,8 @@ If you prefer to install manually:
    - Create a new script file with the same name
    - Copy and paste the code
 4. Save and refresh your spreadsheet
+
+Alternatively, if you use [clasp](https://github.com/google/clasp), point `rootDir` at this folder and run `clasp push`.
 
 See detailed instructions in [SETUP.md](../SETUP.md).
 
@@ -107,8 +115,8 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
 
 ## 📊 File Statistics
 
-- **Total Lines**: ~2,700
-- **Total Files**: 12
+- **Total Lines**: ~2,750
+- **Total Files**: 12 `.gs` files + `appsscript.json`
 - **Languages**: JavaScript (Google Apps Script)
 - **APIs**: Canvas LMS, Anthropic Claude
 
@@ -117,12 +125,12 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
 ### Key Functions by Use Case
 
 **Fetching Data** (Canvas Tools Menu):
-- `fetchAndPopulateQuestionPrompts()` - Import questions, prompts, and rubrics to "Answers" sheet
+- `fetchAndPopulateQuestionPrompts()` - Import questions, prompts, and max points to "Answers" sheet
 - `fetchAndPopulateQuizResponses()` - Download student submissions to main sheet
 
 **AI Grading** (Grading Tools Menu):
 - `autoGradeWithClaude()` - Grade using overall answer keys (Column C)
-- `aiRubricGrade()` - Grade using Canvas rubrics (Columns E+)
+- `aiRubricGrade()` - Grade using your rubric criteria (Columns E+)
 - `generateAIComments()` - Generate feedback without rubrics
 - `aiRubricComment()` - Generate rubric-based feedback
 
@@ -131,7 +139,8 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
 
 **Sheet Management** (Sheet Tools Menu):
 - `clearGradesAndOrComments()` - Clear grades and/or comments from main sheet
-- `setupSettingsSheet_()` - Create or verify Settings sheet
+- `setupSettingsSheet()` - Create or verify Settings sheet
+- `resetClaudeApiKey()` / `resetCanvasApiKey()` - Clear a stored API key so it can be re-entered
 
 **Menu System** (SheetUtilities.gs):
 - `onOpen()` - Creates three menus: Canvas Tools, Grading Tools, Sheet Tools

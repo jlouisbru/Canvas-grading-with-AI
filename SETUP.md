@@ -74,7 +74,7 @@ Before starting, gather:
    - Claude API requires billing setup
    - Navigate to **Billing** section
    - Add payment method
-   - Note: Haiku model is very cost-effective (~$0.25 per million input tokens)
+   - Note: The default model, Claude Opus 5, costs $5 per million input tokens and $25 per million output tokens (thinking counts as output). As a rough guide, grading and commenting 30 students on 5 essay questions costs a few dollars at the default effort. Setting `CLAUDE_EFFORT` to `medium` or `low` reduces that, and Claude Haiku 4.5 does the same job for well under $1 (see [Changing AI Models](#changing-ai-models))
 
 ---
 
@@ -291,18 +291,22 @@ Whether you used the template or manual installation, you need to configure your
 
 1. **Open the Settings sheet** (click the tab at the bottom)
 
-2. **If using the template**: You'll see pre-filled rows. Update the **Value** column (Column B) for:
-   
-3. **If manual installation**: Add these rows starting from Row 2:
+2. **If using the template**: You'll see pre-filled rows. Update the **Value** column (Column B).
+
+3. **If manual installation**: Refresh the spreadsheet, then run **Sheet Tools → Setup/Verify "Settings" Sheet**. It creates every row below with defaults and descriptions.
 
 | Setting Name | Example Value | Your Value |
 |--------------|---------------|------------|
-| CANVAS_BASE_URL | `https://canvas.chapman.edu` | Your institution's URL |
-| COURSE_ID | `12345` | Your course ID |
-| ASSIGNMENT_ID | `67890` | Your assignment ID |
+| CANVAS_COURSE_URL | `https://canvas.yourinstitution.edu/courses/12345` | Your course URL (easiest option) |
+| ASSIGNMENT_ID | `67890` or the full quiz URL | Your quiz's assignment ID, quiz ID, or URL |
+| COURSE_ID | `12345` | Only needed if CANVAS_COURSE_URL is blank |
+| CANVAS_BASE_URL | `https://canvas.yourinstitution.edu` | Only needed if CANVAS_COURSE_URL is blank |
 | CLAUDE_API_ENDPOINT | `https://api.anthropic.com/v1/messages` | (use default) |
-| CLAUDE_GRADING_MODEL | `claude-3-haiku-20240307` | (use default) |
-| CLAUDE_COMMENTING_MODEL | `claude-3-haiku-20240307` | (use default) |
+| CLAUDE_GRADING_MODEL | `claude-opus-5` | (use default) |
+| CLAUDE_COMMENTING_MODEL | `claude-opus-5` | (use default) |
+| CLAUDE_EFFORT | *(blank)* | Optional: `low`, `medium`, `high`, `xhigh`, or `max` (blank = `high`) |
+| CANVAS_API_KEY | *(paste your token)* | Optional — moved to Script Properties and masked on first use |
+| CLAUDE_API_KEY | *(paste your key)* | Optional — moved to Script Properties and masked on first use |
 
 **Note**: If using the template, the API endpoint and model settings are already configured. You only need to update the Canvas-specific settings.
 
@@ -315,8 +319,8 @@ Whether you used the template or manual installation, you need to configure your
 
 #### Finding Assignment ID
 1. Open the assignment/quiz in Canvas
-2. Look at the URL: `https://canvas.institution.edu/courses/12345/assignments/67890`
-3. The number after `/assignments/` is your Assignment ID
+2. Look at the URL: `https://canvas.institution.edu/courses/12345/assignments/67890` or `https://canvas.institution.edu/courses/12345/quizzes/4321`
+3. Either paste the whole URL into ASSIGNMENT_ID, or just the number after `/assignments/` or `/quizzes/`
 
 ---
 
@@ -519,22 +523,36 @@ When you first use any AI grading feature, you'll need to authorize the script a
 To use different Claude models:
 
 1. **Update Settings Sheet**
-   - CLAUDE_GRADING_MODEL: `claude-3-sonnet-20240229` (more capable, higher cost)
-   - CLAUDE_COMMENTING_MODEL: `claude-3-opus-20240229` (most capable, highest cost)
+   - CLAUDE_GRADING_MODEL: the model that assigns grades
+   - CLAUDE_COMMENTING_MODEL: the model that writes feedback (you can use a cheaper model here than for grading, or vice versa)
 
-2. **Available Models**
-   - `claude-3-haiku-20240307` - Fast & economical (recommended)
-   - `claude-3-sonnet-20240229` - Balanced performance
-   - `claude-3-opus-20240229` - Highest quality
-   - Check [Anthropic docs](https://docs.anthropic.com/claude/docs/models-overview) for latest models
+   The Settings sheet always wins over the defaults in the code, so a spreadsheet copied before an update keeps its old model until you change these cells.
 
-### Custom Sleep Delays
+2. **Available Models** (prices per million input / output tokens)
 
-To adjust API call spacing (in GradingTools.gs):
-- Line 77: `Utilities.sleep(1000);` - Delay after grading (1 second)
-- Line 255: `Utilities.sleep(1500);` - Delay after rubric grading (1.5 seconds)
+   | Model ID | Price | Notes |
+   |----------|-------|-------|
+   | `claude-opus-5` | $5 / $25 | Highest quality (default). Thinks before answering |
+   | `claude-sonnet-5` | $2 / $10 | Balanced quality and cost. Thinks before answering |
+   | `claude-haiku-4-5-20251001` | $1 / $5 | Fastest and cheapest; no thinking step. Fine for short, clear-cut answers |
 
-Increase these values if experiencing rate limiting.
+   Check [Anthropic's models overview](https://docs.claude.com/en/docs/about-claude/models/overview) for the latest models. Older model IDs such as `claude-3-haiku-20240307` have been retired and will return an error; if your Settings sheet still has one, replace it.
+
+   A good workflow is to try a new model on a handful of answers you've already graded by hand, and compare before switching a whole class.
+
+3. **Effort (Opus and Sonnet only)**
+
+   `CLAUDE_EFFORT` sets how much the model thinks before answering: `low`, `medium`, `high` (the default when blank), `xhigh`, or `max`. Opus 5 is strong even at `low` and `medium`, which are faster and cheaper; start there if a full run takes too long or costs more than you'd like, and compare against a few hand-graded answers. Higher effort means slower calls, so fewer answers get graded per 5-minute run (just run it again to continue). Haiku ignores this setting.
+
+4. **Declined requests**
+
+   Opus 5 has safety filters that occasionally decline benign requests, for example some life-sciences content. When that happens, the script automatically asks Anthropic to re-run the request on its recommended fallback model. If it is still declined, that cell is left empty, counted under "Errors/Skipped" in the summary, and the reason is written to the execution log, so you can grade that answer by hand.
+
+### Rate Limits and Retries
+
+Grading runs one request at a time, so rate limits are rare. If Claude returns a rate-limit (429), overload (529), or temporary server error (5xx), or the network drops, the script waits and retries automatically (5s, 15s, 30s, or the wait time the API asks for). To change the waits, edit `CLAUDE_RETRY_DELAYS_MS` in `Constants.gs`.
+
+AI operations also stop cleanly after 5 minutes to stay within Google's 6-minute execution limit. Just run the operation again — cells that already have a grade or comment are skipped.
 
 ---
 
