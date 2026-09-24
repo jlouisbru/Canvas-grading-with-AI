@@ -58,56 +58,62 @@ function updateSettingsCache_(key, value) {
 
 /**
  * Resolves the Canvas configuration from the "Settings" sheet without showing any UI.
+ * One link is enough: CANVAS_QUIZ_URL (the quiz's address in Canvas) contains the Canvas address,
+ * the course, and the quiz. Older sheets that use ASSIGNMENT_ID with CANVAS_COURSE_URL (or
+ * COURSE_ID + CANVAS_BASE_URL) keep working.
  * @returns {{courseId: string, assignmentId: string, canvasBaseUrl: string, quizIdFromUrl: string|null}}
  * @throws {Error} With a user-readable message if a setting is missing or invalid.
  * @private
  */
 function resolveConfig_() {
-  let courseId, canvasBaseUrl;
+  const quizUrl = String(getSetting_("CANVAS_QUIZ_URL", "")).trim();
+  const quizRaw = quizUrl || String(getSetting_("ASSIGNMENT_ID", "")).trim();
+  const settingName = quizUrl ? "CANVAS_QUIZ_URL" : "ASSIGNMENT_ID";
+  if (!quizRaw) {
+    throw new Error("CANVAS_QUIZ_URL is empty. Open the quiz in Canvas, copy the link from the address bar, and paste it into the CANVAS_QUIZ_URL row of Settings.");
+  }
 
-  const assignmentIdRaw = String(getSetting_("ASSIGNMENT_ID", "")).trim();
-  if (!assignmentIdRaw) throw new Error("ASSIGNMENT_ID is missing from the 'Settings' sheet.");
-
-  // Normalize ASSIGNMENT_ID: extract numeric ID and quiz ID from any URL format.
-  let assignmentId = assignmentIdRaw;
+  // Extract the quiz or assignment ID from any supported link (or a plain ID).
+  let assignmentId = quizRaw;
   let quizIdFromUrl = null;
-
-  const quizUrlMatch = assignmentIdRaw.match(/\/quizzes\/(\d+)/i);
+  const quizUrlMatch = quizRaw.match(/\/quizzes\/(\d+)/i);
   if (quizUrlMatch) {
     quizIdFromUrl = quizUrlMatch[1];
     assignmentId = quizIdFromUrl;
-    Logger.log(`ASSIGNMENT_ID is a quiz URL. Extracted Quiz ID: ${quizIdFromUrl}`);
+    Logger.log(`${settingName} is a quiz link. Extracted Quiz ID: ${quizIdFromUrl}`);
   } else {
-    const assignmentUrlMatch = assignmentIdRaw.match(/[?&]assignment_id=(\d+)/i) || assignmentIdRaw.match(/\/assignments\/(\d+)/i);
+    const assignmentUrlMatch = quizRaw.match(/[?&]assignment_id=(\d+)/i) || quizRaw.match(/\/assignments\/(\d+)/i);
     if (assignmentUrlMatch) {
       assignmentId = assignmentUrlMatch[1];
-      Logger.log(`ASSIGNMENT_ID is an assignment URL. Extracted Assignment ID: ${assignmentId}`);
+      Logger.log(`${settingName} is an assignment link. Extracted Assignment ID: ${assignmentId}`);
     }
   }
   if (!/^\d+$/.test(assignmentId)) {
-    throw new Error(`ASSIGNMENT_ID "${assignmentIdRaw}" is not a numeric ID or a recognized Canvas quiz/assignment URL.`);
+    throw new Error(`${settingName} "${quizRaw}" isn't a Canvas quiz link. Open the quiz in Canvas and copy the whole address from the browser's address bar.`);
   }
 
-  // Resolve course ID and base URL — try each source in priority order.
-  const assignmentIdUrlCourseMatch = assignmentIdRaw.match(/^(https?:\/\/[^/]+)\/courses\/(\d+)/i);
+  // Course and Canvas address: a CANVAS_QUIZ_URL link's own course wins. Older sheets keep their
+  // original order: CANVAS_COURSE_URL, then a link in ASSIGNMENT_ID, then COURSE_ID + CANVAS_BASE_URL.
+  const coursePattern = /^(https?:\/\/[^/]+)\/courses\/(\d+)/i;
+  const linkCourseMatch = quizRaw.match(coursePattern);
   const courseUrl = String(getSetting_("CANVAS_COURSE_URL", "")).trim();
-
-  if (courseUrl) {
-    const urlMatch = courseUrl.match(/^(https?:\/\/[^/]+)\/courses\/(\d+)/i);
+  let courseId, canvasBaseUrl;
+  if (linkCourseMatch && (quizUrl || !courseUrl)) {
+    canvasBaseUrl = linkCourseMatch[1];
+    courseId = linkCourseMatch[2];
+  } else if (courseUrl) {
+    const urlMatch = courseUrl.match(coursePattern);
     if (!urlMatch) {
       throw new Error(`CANVAS_COURSE_URL "${courseUrl}" is not a valid Canvas course URL. Expected format: https://canvas.yourinstitution.edu/courses/12345`);
     }
     canvasBaseUrl = urlMatch[1];
     courseId = urlMatch[2];
-    Logger.log(`Parsed from CANVAS_COURSE_URL — Base URL: ${canvasBaseUrl}, Course ID: ${courseId}`);
-  } else if (assignmentIdUrlCourseMatch) {
-    canvasBaseUrl = assignmentIdUrlCourseMatch[1];
-    courseId = assignmentIdUrlCourseMatch[2];
-    Logger.log(`Parsed from ASSIGNMENT_ID URL — Base URL: ${canvasBaseUrl}, Course ID: ${courseId}`);
   } else {
     courseId = String(getSetting_("COURSE_ID", "")).trim();
     canvasBaseUrl = getSetting_("CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL);
-    if (!courseId) throw new Error("COURSE_ID is missing. Set CANVAS_COURSE_URL, a full URL in ASSIGNMENT_ID, or COURSE_ID in the 'Settings' sheet.");
+    if (!courseId) {
+      throw new Error(`${settingName} needs the full quiz link (it starts with https:// and includes /courses/…), not just the ID. Copy it from the browser's address bar while viewing the quiz.`);
+    }
     if (!canvasBaseUrl) throw new Error("CANVAS_BASE_URL is missing (check Settings sheet or script defaults).");
   }
 
@@ -125,7 +131,7 @@ function getConfigFromSheet_() {
     return resolveConfig_();
   } catch (e) {
     Logger.log(`Error reading config: ${e.message}`);
-    notify_('Configuration Error', `Could not read configuration.\n\nError: ${e.message}\n\nPlease ensure:\n- Either "CANVAS_COURSE_URL" (e.g., https://canvas.yourinstitution.edu/courses/12345)\n  OR both "CANVAS_BASE_URL" and "COURSE_ID" are set in the "Settings" sheet.\n- "ASSIGNMENT_ID" is also set.\n- Use "Check Setup" in the menu to see what's missing.`);
+    notify_('Check Your Quiz Link', `${e.message}\n\nThe link looks like https://canvas.yourinstitution.edu/courses/12345/quizzes/67890. "Check Setup" in the menu tests it.`);
     return null;
   }
 }

@@ -3,5 +3,14 @@
   "dependencies": {
   },
   "exceptionLogging": "STACKDRIVER",
-  "runtimeVersion": "V8"
+  "runtimeVersion": "V8",
+  "sheets": {
+    "macros": [
+      {
+        "menuName": "Mark Selected Cells as Reviewed",
+        "functionName": "markSelectionAsReviewed",
+        "defaultShortcut": "Ctrl+Alt+Shift+1"
+      }
+    ]
+  }
 }

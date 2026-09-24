@@ -49,4 +49,5 @@ const AI_CELL_NOTE = "Written by AI — review before uploading. Editing this ce
 // Long AI runs continue automatically in the background after the 5-minute pause.
 const AUTO_CONTINUE_DELAY_MS = 60000;
 const AUTO_CONTINUE_MAX_RUNS = 20; // Safety cap: ~20 × 5 min of work per chain.
+const RUN_STALE_MS = 600000; // A "running" status with no update for 10 minutes means the run has stopped.
 const AUTO_CONTINUE_MAX_LOCK_RETRIES = 10; // A continuation that finds another run busy retries this many times.

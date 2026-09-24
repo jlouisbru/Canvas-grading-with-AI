@@ -23,7 +23,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 ## 💻 Source Code Files (`src/`)
 
 ### appsscript.json
-**Purpose**: Apps Script project manifest (V8 runtime, time zone, Stackdriver exception logging). Required for deploying with `clasp push`.
+**Purpose**: Apps Script project manifest (V8 runtime, time zone, Stackdriver exception logging, and the Ctrl+Alt+Shift+1 "Mark Selected Cells as Reviewed" macro). Required for deploying with `clasp push`.
 
 ---
 
@@ -58,7 +58,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 **Purpose**: Reads the "Settings" sheet (cached once per execution) and resolves Canvas configuration.
 - `getSetting_(settingName, defaultValue)` - Cached lookup with fallback; ignores blank and masked (`•••••`) values
 - `clearSettingsCache_()` / `updateSettingsCache_(key, value)` - Cache maintenance
-- `resolveConfig_()` - Returns `{courseId, assignmentId, canvasBaseUrl, quizIdFromUrl}` or throws a readable error. Accepts a full course URL (`CANVAS_COURSE_URL`), a quiz/assignment URL in `ASSIGNMENT_ID`, or separate `COURSE_ID` + `CANVAS_BASE_URL`
+- `resolveConfig_()` - Returns `{courseId, assignmentId, canvasBaseUrl, quizIdFromUrl}` or throws a readable error. Reads the single `CANVAS_QUIZ_URL` link (quiz, assignment, or SpeedGrader link); older sheets' `ASSIGNMENT_ID` with `CANVAS_COURSE_URL` or `COURSE_ID` + `CANVAS_BASE_URL` still work
 - `getConfigFromSheet_()` - `resolveConfig_()` plus an explanatory alert on failure
 - `getGenerositySetting_()` / `getYesNoSetting_(name, default)` - Readers for the dropdown settings
 
@@ -110,6 +110,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 ### GradingTools.gs (~280 lines)
 **Purpose**: One engine for both AI operations.
 - `gradeAnswers()` / `writeFeedback()` - Menu steps 3 and 4
+- `stopAIRun()` - Menu / Start Here Stop: asks the current run to stop after the current answer and cancels scheduled continuations
 - `continueGradeAnswers()` / `continueWriteFeedback()` - Background continuations (time-based trigger handlers)
 - `planAITasks_(context, kind)` - Lists the empty cells to fill; each question uses its rubric if it has criteria, otherwise its answer key; feedback skips full marks
 - `confirmAIRun_(...)` - The single confirmation: counts, model, generosity, skipped questions, unreviewed drafts
@@ -121,6 +122,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 ### AutoContinue.gs (~80 lines)
 - `getRunStatus_()` / `saveRunStatus_(status)` - Latest run's state (running, scheduled, paused, done, stopped), shown in Start Here
 - `acquireRunLock_()` - Prevents two runs from writing at once
+- `requestCancel_()` / `isCancelRequested_()` / `clearCancelRequest_()` / `isRunInProgress_(status)` - The Stop signal, checked before each answer
 - `scheduleContinuation_(handler)` / `deleteContinuationTriggers_(handler)` - One-off time-based triggers for background continuation
 
 ---
@@ -129,6 +131,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 - `markAsAIWritten_(range)` / `clearAIMarks_(range)` / `countAIMarks_(range)` - Highlight and note on AI-written cells
 - `countUnreviewedAnswerKeyDrafts_()` - Questions whose answer key or rubric is still an unreviewed AI draft
 - `onEdit(e)` - Simple trigger: editing an AI-highlighted cell marks it reviewed
+- `markSelectionAsReviewed()` - Clears highlights on the selected cells; bound to Ctrl+Alt+Shift+1 as a Sheets macro in `appsscript.json`
 - `markAllAsReviewed()` - Menu item (More Tools)
 
 ---

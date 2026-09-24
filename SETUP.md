@@ -298,30 +298,26 @@ Whether you used the template or manual installation, you need to configure your
 
 | Setting Name | Example Value | Your Value |
 |--------------|---------------|------------|
-| CANVAS_COURSE_URL | `https://canvas.yourinstitution.edu/courses/12345` | Your course URL (easiest option) |
-| ASSIGNMENT_ID | `67890` or the full quiz URL | Your quiz's assignment ID, quiz ID, or URL |
-| COURSE_ID | `12345` | Only needed if CANVAS_COURSE_URL is blank |
-| CANVAS_BASE_URL | `https://canvas.yourinstitution.edu` | Only needed if CANVAS_COURSE_URL is blank |
-| CLAUDE_API_ENDPOINT | `https://api.anthropic.com/v1/messages` | (use default) |
+| CANVAS_QUIZ_URL | `https://canvas.yourinstitution.edu/courses/12345/quizzes/67890` | The quiz's link, copied from the address bar |
 | CLAUDE_GRADING_MODEL | `claude-sonnet-5` | (use default) |
 | CLAUDE_COMMENTING_MODEL | `claude-sonnet-5` | (use default) |
-| CLAUDE_EFFORT | *(blank)* | Optional: `low`, `medium`, `high`, `xhigh`, or `max` (blank = `high`) |
+| CLAUDE_EFFORT | `high` | `low`, `medium`, `high`, `xhigh`, or `max` |
+| GRADING_GENEROSITY | `3` | 1 (Very Strict) to 5 (Very Generous) |
+| INCLUDE_ANSWER_KEY_IN_FEEDBACK | `No` | `Yes` to start feedback with the correct answer |
 | CANVAS_API_KEY | *(paste your token)* | Optional — moved to Script Properties and masked on first use |
 | CLAUDE_API_KEY | *(paste your key)* | Optional — moved to Script Properties and masked on first use |
 
-**Note**: If using the template, the API endpoint and model settings are already configured. You only need to update the Canvas-specific settings.
+**Note**: If using the template, the model and other settings are already configured. You only need to paste the quiz link and your API keys.
 
-### Step 2: Find Canvas IDs
+### Step 2: Copy the Quiz Link
 
-#### Finding Course ID
-1. Open your Canvas course
-2. Look at the URL: `https://canvas.institution.edu/courses/12345`
-3. The number after `/courses/` is your Course ID
+1. In Canvas, open the quiz you want to grade
+2. Copy the whole address from the browser's address bar. It looks like `https://canvas.institution.edu/courses/12345/quizzes/67890`
+3. Paste it into the `CANVAS_QUIZ_URL` row
 
-#### Finding Assignment ID
-1. Open the assignment/quiz in Canvas
-2. Look at the URL: `https://canvas.institution.edu/courses/12345/assignments/67890` or `https://canvas.institution.edu/courses/12345/quizzes/4321`
-3. Either paste the whole URL into ASSIGNMENT_ID, or just the number after `/assignments/` or `/quizzes/`
+A SpeedGrader link (`.../gradebook/speed_grader?assignment_id=...`) or an assignment link (`.../assignments/67890`) for the quiz works too. Run **Check Setup** to confirm it points to the right course and quiz.
+
+**Older setups**: sheets that still have `CANVAS_COURSE_URL` + `ASSIGNMENT_ID` (or `COURSE_ID` + `CANVAS_BASE_URL`) keep working. If `CANVAS_QUIZ_URL` is filled in, it's used instead. To use a custom Claude endpoint, add a `CLAUDE_API_ENDPOINT` row.
 
 ---
 
@@ -466,6 +462,10 @@ Type an answer key into Column C of the Answers sheet for at least one question,
    - Click **Executions** (clock icon)
    - Review recent runs for errors
 4. Look at the confirmation before grading: its "Skipped" list names questions with no answer key or missing points
+
+### Stopping a Run
+
+Click **Stop** in the Start Here panel, or **Grading with AI → Stop Current AI Run**. Google can't interrupt an answer that's already being processed, so the current one finishes first (usually a few seconds), then the run stops, keeps everything written, and cancels any scheduled background continuation.
 
 ### Background Continuation Didn't Resume
 

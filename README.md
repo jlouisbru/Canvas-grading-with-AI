@@ -61,8 +61,7 @@ The first time you run anything, Google asks you to authorize the script (see [S
 
 | Setting Name | Value | Description |
 |--------------|-------|-------------|
-| CANVAS_COURSE_URL | `https://canvas.yourinstitution.edu/courses/12345` | Paste your course URL |
-| ASSIGNMENT_ID | Assignment ID, quiz ID, or the full quiz URL | The quiz to grade (the type is detected automatically) |
+| CANVAS_QUIZ_URL | `https://canvas.yourinstitution.edu/courses/12345/quizzes/67890` | Open the quiz in Canvas and paste its link from the address bar. That one link identifies your Canvas site, course, and quiz |
 | CANVAS_API_KEY | Your Canvas token | Moved to Script Properties and replaced with `•••••` on first use |
 | CLAUDE_API_KEY | Your Claude API key | Moved to Script Properties and replaced with `•••••` on first use |
 
@@ -74,7 +73,7 @@ These are already set, and each is a dropdown you can change any time:
 
 Then click **Check Setup**. It tests your Canvas settings and key, finds the quiz, and checks your Claude key and models, then tells you in plain language what (if anything) to fix. Checking costs nothing.
 
-> **Already using an older copy of the spreadsheet?** Your Settings sheet overrides the defaults in the code. After updating the code, run **Grading with AI → More Tools → Set Up Settings Sheet** to add the new rows and dropdowns (your existing values are kept), and set both model cells to `claude-sonnet-5`.
+> **Already using an older copy of the spreadsheet?** Your Settings sheet overrides the defaults in the code. After updating the code, run **Grading with AI → More Tools → Set Up Settings Sheet** to add the new rows and dropdowns (your existing values are kept), and set both model cells to `claude-sonnet-5`. Older `CANVAS_COURSE_URL` + `ASSIGNMENT_ID` rows keep working; to switch to the single link, paste the quiz link into `CANVAS_QUIZ_URL` and delete the two old rows.
 
 ## 📖 Detailed Setup Guide
 
@@ -106,7 +105,9 @@ Everything lives in one **Grading with AI** menu, numbered in the order you use 
 
 **Before grading or writing feedback**, you get one confirmation showing how many answers will be processed, the model, and the generosity level, plus anything skipped (for example, a question with no answer key) and any AI-drafted answer keys you haven't reviewed yet.
 
-**Reviewing AI work**: every AI-written grade, comment, and drafted answer key is highlighted in light purple with a note. Editing a cell removes its highlight; **More Tools → Mark All AI Cells as Reviewed** clears them all. The upload confirmation tells you if any highlighted cells remain.
+**Reviewing AI work**: every AI-written grade, comment, and drafted answer key is highlighted in light purple with a note. To mark cells reviewed, select them (one cell, a column, or several ranges) and press **Ctrl+Alt+Shift+1** (**⌘+Option+Shift+1** on Mac). Editing a cell also removes its highlight, and **More Tools → Mark All AI Cells as Reviewed** clears them all. The upload confirmation tells you if any highlighted cells remain.
+
+**Stopping a run**: click **Stop** in the Start Here panel (or **Grading with AI → Stop Current AI Run**). The answer in progress finishes, everything written so far is kept, and any scheduled background continuation is cancelled. Run the step again to pick up where it stopped.
 
 **Large classes**: Google stops scripts after a few minutes. When grading or feedback reaches that limit, it continues automatically in the background about a minute later, and progress shows in the Start Here panel. You can close the spreadsheet in the meantime.
 
@@ -122,6 +123,7 @@ Everything lives in one **Grading with AI** menu, numbered in the order you use 
 
 ### More Tools
 
+- **Mark Selected Cells as Reviewed** (Ctrl+Alt+Shift+1): removes the AI highlight from the selected cells
 - **Mark All AI Cells as Reviewed**: removes every AI highlight
 - **Clear Grades / Clear Comments / Clear Grades and Comments**: clears those columns for all questions after one confirmation (student answers are never touched)
 - **Fetch Question Prompts Only / Fetch Student Responses Only**: the two halves of step 1
@@ -274,6 +276,9 @@ If you find this tool helpful, please:
 - **Review highlighting**: AI-written grades, comments, and drafts are highlighted until a person edits them or marks them reviewed; highlights follow their rows when you re-fetch; upload warns about unreviewed cells
 - **Background continuation**: long grading and feedback runs continue automatically after Google's time limit instead of asking you to re-run (the first run asks for one extra Google permission to schedule this)
 - **Fix**: Upload always uses "Main Sheet" instead of whichever tab is open
+- **One link**: `CANVAS_QUIZ_URL` replaces `CANVAS_COURSE_URL` + `ASSIGNMENT_ID`; the quiz link already contains the Canvas site, course, and quiz (the old rows still work)
+- **Stop**: a Stop button in Start Here (and a menu item) ends grading, feedback, or drafting after the current answer, keeps finished work, and cancels background continuations
+- **Quick review**: select cells and press Ctrl+Alt+Shift+1 to mark them reviewed
 - **Model upgrade**: Default model is now Claude Sonnet 5 (`claude-sonnet-5`) for both grading and feedback, with Claude Opus 5 (`claude-opus-5`, highest quality) and Claude Haiku 4.5 (lowest cost) selectable from a dropdown in the Settings sheet. Existing spreadsheets keep their Settings values until you change them (see Quick Start)
 - **New setting**: `CLAUDE_EFFORT` (low/medium/high/xhigh/max) controls how much Sonnet/Opus think before answering, the main speed and cost lever
 - **Improvement**: Grades are requested as structured JSON (`{"grade": n}`) on models that support it, so a chatty response can no longer break grade parsing

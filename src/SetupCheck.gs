@@ -26,9 +26,9 @@ function runSetupChecks_() {
   let config = null;
   try {
     config = resolveConfig_();
-    add("Canvas settings", "ok", `course ${config.courseId} on ${config.canvasBaseUrl.replace(/^https?:\/\//, "")}, assignment ${config.assignmentId}`);
+    add("Quiz link", "ok", `course ${config.courseId} on ${config.canvasBaseUrl.replace(/^https?:\/\//, "")}, quiz ${config.assignmentId}`);
   } catch (e) {
-    add("Canvas settings", "fail", e.message);
+    add("Quiz link", "fail", e.message);
   }
 
   const canvasKey = findSavedApiKey_("Canvas", "CANVAS_API_KEY", "CANVAS_API_KEY");
@@ -37,7 +37,7 @@ function runSetupChecks_() {
   } else if (config) {
     checkCanvasAccess_(config, canvasKey, add);
   } else {
-    add("Canvas API key", "warn", "saved, but not tested until the Canvas settings are fixed.");
+    add("Canvas API key", "warn", "saved, but not tested until the quiz link is fixed.");
   }
 
   const claudeKey = findSavedApiKey_("Claude", "CLAUDE_API_KEY", "CLAUDE_API_KEY");
@@ -68,7 +68,7 @@ function checkCanvasAccess_(config, canvasKey, add) {
   try {
     const quizResult = getQuizIdFromAssignment_(canvasKey, config);
     if (!quizResult) {
-      add("Quiz", "fail", `ASSIGNMENT_ID ${config.assignmentId} isn't a Classic Quiz in this course.`);
+      add("Quiz", "fail", `the link (ID ${config.assignmentId}) isn't a Classic Quiz in this course.`);
       return;
     }
     const { orderedQuestionIds } = getEssayQuestions_(canvasKey, config, quizResult.quizId);

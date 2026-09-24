@@ -42,6 +42,31 @@ function writeFeedback() {
   runAIOperation_("feedback", false);
 }
 
+/**
+ * Menu / Start Here action: stops the current grading, feedback, or answer-key drafting run after
+ * the answer it's working on, and cancels any scheduled background continuation. Everything
+ * already written is kept, so running the step again picks up where it stopped.
+ */
+function stopAIRun() {
+  // The stop signal is left set on purpose: a run that is about to start (its confirmation is
+  // still open) or about to schedule a continuation sees it and stops. Fresh runs clear it
+  // before their confirmation, so a leftover signal never blocks the next run.
+  requestCancel_();
+  Object.values(AI_OPERATIONS).forEach(op => deleteContinuationTriggers_(op.continueHandler));
+  const status = getRunStatus_();
+  if (isRunInProgress_(status)) {
+    showToast_("Stopping after the current answer finishes…", "Stop", 15);
+    return;
+  }
+  if (status && status.state === "scheduled") {
+    const title = AI_OPERATIONS[status.operation]?.title || "The run";
+    saveRunStatus_({ ...status, state: "stopped", message: `${title} stopped by you. Finished cells are kept; run it again to continue.` });
+    notify_("Stopped", `The background continuation was cancelled. ${status.written} cell(s) were written and are kept.\n\nRun the step again whenever you want to continue.`);
+    return;
+  }
+  notify_("Nothing Running", "No grading, feedback, or drafting run is in progress. (If one was just about to start, it stops right away.)");
+}
+
 /** Background continuation of gradeAnswers (called by a time-based trigger). */
 function continueGradeAnswers() {
   runAIOperation_("grade", true);
@@ -165,15 +190,16 @@ function confirmAIRun_(operationName, tasks, skipped, settings) {
 
 /**
  * Runs Claude on each task until done or the time budget runs out, writing and highlighting results.
- * @returns {{written: number, errors: number, processed: number, timedOut: boolean, authError: boolean}}
+ * @returns {{written: number, errors: number, processed: number, timedOut: boolean, authError: boolean, cancelled: boolean}}
  * @private
  */
 function processAITasks_(operationName, tasks, context, settings, executionStart, statusBase) {
   const op = AI_OPERATIONS[operationName];
-  const outcome = { written: 0, errors: 0, processed: 0, timedOut: false, authError: false };
+  const outcome = { written: 0, errors: 0, processed: 0, timedOut: false, authError: false, cancelled: false };
 
   for (const task of tasks) {
     if (Date.now() - executionStart > MAX_AI_RUNTIME_MS) { outcome.timedOut = true; break; }
+    if (isCancelRequested_()) { outcome.cancelled = true; break; }
     showToast_(`${op.title} ${outcome.processed + 1} of ${tasks.length} (QID ${task.qId}, row ${task.sheetRow})…`, "Working…", -1);
 
     const result = op.process(task, context, settings);
@@ -234,6 +260,10 @@ function runAIOperation_(operationName, isContinuation) {
  */
 function retryContinuationLater_(operationName) {
   const op = AI_OPERATIONS[operationName];
+  if (isCancelRequested_()) {
+    Logger.log(`${op.title} continuation not rescheduled: the user asked to stop.`);
+    return;
+  }
   const status = getRunStatus_();
   const ownsStatus = status?.operation === operationName;
   const retries = (ownsStatus ? (status.lockRetries || 0) : 0) + 1;
@@ -257,6 +287,12 @@ function executeAIRun_(operationName, isContinuation, executionStart) {
   const previous = getRunStatus_();
   const chain = (isContinuation && previous?.operation === operationName) ? previous : { written: 0, errors: 0, runNumber: 0 };
   const statusBase = { operation: operationName, runNumber: chain.runNumber + 1, written: chain.written, errors: chain.errors };
+  if (isContinuation && isCancelRequested_()) {
+    clearCancelRequest_();
+    saveRunStatus_({ ...statusBase, state: "stopped", message: `${op.title} stopped by you. Finished cells are kept; run it again to continue.` });
+    return { message: null, authError: false };
+  }
+  if (!isContinuation) clearCancelRequest_(); // A fresh run starts with no pending stop request.
 
   const context = initializeAIOperationContext_();
   if (!context) {
@@ -277,6 +313,7 @@ function executeAIRun_(operationName, isContinuation, executionStart) {
     return { message: null, authError: false };
   }
 
+  saveRunStatus_({ ...statusBase, state: "running", message: `${op.title}: ${tasks.length} answer(s) to go.` });
   const outcome = processAITasks_(operationName, tasks, context, settings, executionStart, statusBase);
   const totals = { ...statusBase, written: statusBase.written + outcome.written, errors: statusBase.errors + outcome.errors };
   const errorNote = totals.errors > 0 ? `\nCouldn't complete: ${totals.errors} (details in Extensions → Apps Script → Executions).` : "";
@@ -285,6 +322,13 @@ function executeAIRun_(operationName, isContinuation, executionStart) {
     saveRunStatus_({ ...totals, state: "stopped", message: `${op.title} stopped: the Claude API key was rejected.` });
     return { message: null, authError: true };
   }
+  if (outcome.cancelled) {
+    clearCancelRequest_();
+    const remaining = tasks.length - outcome.processed;
+    saveRunStatus_({ ...totals, state: "stopped", message: `${op.title} stopped by you with ${remaining} to go. Finished cells are kept; run it again to continue.` });
+    showToast_(`${op.title} stopped.`, "Stopped", 10);
+    return { message: { title: `${op.title} Stopped`, text: `Stopped as you asked. Written: ${totals.written}. ${remaining} answer(s) not done yet.\n\nEverything written is kept; run the step again to continue.${errorNote}` }, authError: false };
+  }
   if (!outcome.timedOut) {
     saveRunStatus_({ ...totals, state: "done", message: `${op.title} complete: ${totals.written} written.` });
     showToast_(`${op.title} complete: ${totals.written} written.`, "Done", 10);
@@ -292,6 +336,11 @@ function executeAIRun_(operationName, isContinuation, executionStart) {
   }
 
   const remaining = tasks.length - outcome.processed;
+  if (isCancelRequested_()) { // Stop was pressed just as the time limit hit: don't schedule a continuation.
+    clearCancelRequest_();
+    saveRunStatus_({ ...totals, state: "stopped", message: `${op.title} stopped by you with ${remaining} to go. Finished cells are kept; run it again to continue.` });
+    return { message: { title: `${op.title} Stopped`, text: `Stopped as you asked. Written: ${totals.written}. ${remaining} answer(s) not done yet.${errorNote}` }, authError: false };
+  }
   const canContinue = outcome.written > 0 && statusBase.runNumber < AUTO_CONTINUE_MAX_RUNS && scheduleContinuation_(op.continueHandler);
   if (!canContinue) {
     saveRunStatus_({ ...totals, state: "paused", message: `${op.title} paused with ${remaining} to go. Run it again to continue.` });

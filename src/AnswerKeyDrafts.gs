@@ -13,6 +13,7 @@ function draftAnswerKeysWithAI() {
     ui.alert("No Questions Yet", `Run "1. Fetch from Canvas" first to load the quiz questions.`, ui.ButtonSet.OK);
     return;
   }
+  clearCancelRequest_(); // Before the dialog, so pressing Stop while it's open still counts.
   const targets = Object.entries(questions).filter(([, q]) => q.prompt && !q.key);
   if (targets.length === 0) {
     ui.alert("Nothing to Draft", `Every question already has an answer key in Column C of "${ANSWERS_SHEET_NAME}".\n\nTo redraft one, clear its Column C cell and run this again.`, ui.ButtonSet.OK);
@@ -36,28 +37,32 @@ function draftAnswerKeysWithAI() {
 
   if (result.authError) { handleClaudeAuthError_(); return; }
   const lines = [`Answer keys drafted: ${result.keysWritten}.`];
+  if (result.cancelled) lines.unshift(`Stopped as you asked; ${result.remaining} question(s) not drafted yet.`, "");
   if (includeRubric) lines.push(`Rubrics drafted: ${result.rubricsWritten}.`);
   if (result.rubricsSkipped > 0) lines.push(`Rubrics not written: ${result.rubricsSkipped} (existing criteria were kept, or the drafted points didn't add up to the question's points).`);
   if (result.errors > 0) lines.push(`Couldn't draft: ${result.errors} (details in Extensions → Apps Script → Executions).`);
-  if (result.remaining > 0) lines.push(`Time limit reached with ${result.remaining} question(s) left. Run this again to draft the rest.`);
+  if (result.remaining > 0 && !result.cancelled) lines.push(`Time limit reached with ${result.remaining} question(s) left. Run this again to draft the rest.`);
   lines.push("", `Review the highlighted drafts in "${ANSWERS_SHEET_NAME}" and edit anything that doesn't match how you grade. Editing a cell removes its highlight.`);
   showToast_("Answer key drafts ready for review.", "Done", 10);
-  ui.alert("Drafts Ready for Review", lines.join("\n"), ui.ButtonSet.OK);
+  ui.alert(result.cancelled ? "Drafting Stopped" : "Drafts Ready for Review", lines.join("\n"), ui.ButtonSet.OK);
 }
 
 /**
  * Drafts and writes answer keys (and rubrics) for the target questions within the time budget.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} answersSheet The "Answers" sheet.
  * @param {Array<[string, object]>} targets [qId, question] pairs from parseAnswersSheet_().
- * @returns {{keysWritten: number, rubricsWritten: number, rubricsSkipped: number, errors: number, remaining: number, authError: boolean}}
+ * @returns {{keysWritten: number, rubricsWritten: number, rubricsSkipped: number, errors: number, remaining: number, authError: boolean, cancelled: boolean}}
  * @private
  */
 function draftAnswerKeys_(answersSheet, targets, includeRubric, claudeApiKey, model) {
   const startTime = Date.now();
-  const result = { keysWritten: 0, rubricsWritten: 0, rubricsSkipped: 0, errors: 0, remaining: 0, authError: false };
+  const result = { keysWritten: 0, rubricsWritten: 0, rubricsSkipped: 0, errors: 0, remaining: 0, authError: false, cancelled: false };
+  const status = { operation: "draft", runNumber: 1, written: 0, errors: 0 };
+  saveRunStatus_({ ...status, state: "running", message: `Drafting answer keys: ${targets.length} to go.` });
 
   for (let i = 0; i < targets.length; i++) {
     if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { result.remaining = targets.length - i; break; }
+    if (isCancelRequested_()) { result.cancelled = true; result.remaining = targets.length - i; break; }
     const [qId, question] = targets[i];
     showToast_(`Drafting answer key ${i + 1} of ${targets.length} (QID ${qId})…`, "Working…", -1);
 
@@ -81,7 +86,12 @@ function draftAnswerKeys_(answersSheet, targets, includeRubric, claudeApiKey, mo
       else result.rubricsSkipped++;
     }
     SpreadsheetApp.flush();
+    saveRunStatus_({ ...status, state: "running", written: result.keysWritten, errors: result.errors, message: `Drafting answer keys: ${targets.length - i - 1} to go.` });
   }
+  if (result.cancelled) clearCancelRequest_();
+  saveRunStatus_({ ...status, written: result.keysWritten, errors: result.errors,
+    state: result.cancelled ? "stopped" : "done",
+    message: result.cancelled ? "Answer-key drafting stopped by you." : `Answer keys drafted: ${result.keysWritten}.` });
   return result;
 }
 

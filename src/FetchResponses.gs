@@ -96,7 +96,7 @@ function readRowsToPreserve_(mainSheet, orderedQuestionIds) {
  */
 function fetchQuizResponsesCore_(config, canvasApiKey) {
   const quizResult = getQuizIdFromAssignment_(canvasApiKey, config);
-  if (!quizResult) throw new Error(`Could not find a quiz for ASSIGNMENT_ID ${config.assignmentId}. Check that it's a Classic Quiz with essay questions.`);
+  if (!quizResult) throw new Error(`Could not find a Classic Quiz at CANVAS_QUIZ_URL (ID ${config.assignmentId}). Check that the link opens the quiz in Canvas and that it has essay questions.`);
   // If a quiz URL was provided, use the resolved assignment ID for the submissions endpoint.
   if (quizResult.resolvedAssignmentId) config.assignmentId = quizResult.resolvedAssignmentId;
 

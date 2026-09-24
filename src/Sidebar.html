@@ -30,6 +30,8 @@
     }
     .banner.show { display: block; }
     .banner strong { display: block; margin-bottom: 2px; }
+    .banner .stop { display: none; margin-top: 8px; border-color: var(--fail); color: var(--fail); }
+    .banner.active .stop { display: inline-block; }
     ol { list-style: none; margin: 0; padding: 0; }
     li.step {
       position: relative; padding: 10px 10px 10px 40px; border: 1px solid transparent;
@@ -71,6 +73,7 @@
   <div id="banner" class="banner" role="status" aria-live="polite">
     <strong id="banner-title"></strong>
     <span id="banner-text"></span>
+    <div><button class="stop" type="button" data-fn="stopAIRun">Stop</button></div>
   </div>
 
   <ol id="steps"></ol>
@@ -82,7 +85,7 @@
       <button class="link" type="button" data-fn="showSheet" data-arg="Settings">Change</button>
     </div>
     <div class="row" style="margin-top:6px">
-      <span>Tip: edit an AI-highlighted cell to mark it reviewed.</span>
+      <span>Tip: select reviewed cells and press Ctrl+Alt+Shift+1 (⌘+Option+Shift+1 on Mac) to clear their highlight.</span>
       <button class="link" type="button" id="refresh">Refresh</button>
     </div>
   </footer>
@@ -103,12 +106,14 @@
         { label: "Write Feedback", fn: "writeFeedback", primary: true } ] },
       { id: "upload", title: "Review and upload", actions: [
         { label: "Open Main Sheet", fn: "showSheet", arg: "Main Sheet" },
+        { label: "Mark Selected Reviewed", fn: "markSelectionAsReviewed" },
         { label: "Mark All Reviewed", fn: "markAllAsReviewed" },
         { label: "Upload to Canvas", fn: "uploadEssayGradesToCanvas", primary: true } ] }
     ];
     const ACTIVE_RUN_STATES = ["running", "scheduled"];
     const STALE_RUN_MS = 10 * 60 * 1000; // An "active" run with no update for this long has probably stopped.
-    const AI_RUN_ACTIONS = ["gradeAnswers", "writeFeedback"];
+    const AI_RUN_ACTIONS = ["gradeAnswers", "writeFeedback", "draftAnswerKeysWithAI"];
+    const ALWAYS_AVAILABLE = ["stopAIRun", "markSelectionAsReviewed", "showSheet"];
     let busy = false;
     let runActive = false;
     let pollTimer = null;
@@ -171,7 +176,7 @@
       renderBanner(status.run);
       setBusy(busy);
       clearTimeout(pollTimer);
-      if (runActive) pollTimer = setTimeout(refresh, 10000);
+      if (runActive || busy) pollTimer = setTimeout(refresh, 5000);
     }
 
     function runAgeMs(run) {
@@ -186,6 +191,7 @@
       const banner = document.getElementById("banner");
       const show = run && (ACTIVE_RUN_STATES.includes(run.state) || runAgeMs(run) < 30 * 60 * 1000);
       banner.classList.toggle("show", Boolean(show));
+      banner.classList.toggle("active", isRunActive(run));
       if (!show) return;
       if (ACTIVE_RUN_STATES.includes(run.state) && !isRunActive(run)) {
         document.getElementById("banner-title").textContent = "May have stopped";
@@ -193,7 +199,7 @@
           `No progress for over 10 minutes. Written so far: ${run.written}. Run the step again to continue; finished cells are skipped.`;
         return;
       }
-      const titles = { running: "Working…", scheduled: "Continuing in the background", paused: "Paused", stopped: "Stopped", done: "Finished" };
+      const titles = { running: "Working… (Stop finishes the current answer first)", scheduled: "Continuing in the background", paused: "Paused", stopped: "Stopped", done: "Finished" };
       document.getElementById("banner-title").textContent = titles[run.state] || "Last run";
       document.getElementById("banner-text").textContent = `${run.message} Written so far: ${run.written}.`;
     }
@@ -201,7 +207,8 @@
     function setBusy(isBusy) {
       busy = isBusy;
       document.querySelectorAll("button[data-fn]").forEach(b => {
-        b.disabled = isBusy || (runActive && AI_RUN_ACTIONS.includes(b.dataset.fn));
+        const fn = b.dataset.fn;
+        b.disabled = !ALWAYS_AVAILABLE.includes(fn) && (isBusy || (runActive && AI_RUN_ACTIONS.includes(fn)));
       });
     }
 
@@ -219,7 +226,18 @@
     }
 
     function runAction(fn, arg) {
+      if (ALWAYS_AVAILABLE.includes(fn)) {
+        // Runs alongside whatever else is in progress, without locking the other buttons.
+        if (fn === "stopAIRun") showStatus("Stopping… the current answer finishes first.");
+        const runner = google.script.run
+          .withSuccessHandler(() => { if (fn === "stopAIRun") showStatus(""); refresh(); })
+          .withFailureHandler(err => { showStatus(err.message, true); refresh(); });
+        if (arg) runner[fn](arg); else runner[fn]();
+        return;
+      }
       setBusy(true);
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(refresh, 4000); // Pick up the run's status (and show Stop) while it works.
       showStatus(fn === "showSheet" ? "" : "Working… a dialog may appear over the sheet.");
       const runner = google.script.run
         .withSuccessHandler(() => { setBusy(false); showStatus(""); refresh(); })

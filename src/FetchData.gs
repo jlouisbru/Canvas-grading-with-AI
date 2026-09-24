@@ -125,7 +125,7 @@ function fetchQuestionPromptsCore_(config, canvasApiKey) {
   const numManagedColumns = getAnswersSheetHeaders_().length;
 
   const quizResult = getQuizIdFromAssignment_(canvasApiKey, config);
-  if (!quizResult) throw new Error(`Could not find a quiz for ASSIGNMENT_ID ${config.assignmentId}. Check that it's a Classic Quiz with essay questions.`);
+  if (!quizResult) throw new Error(`Could not find a Classic Quiz at CANVAS_QUIZ_URL (ID ${config.assignmentId}). Check that the link opens the quiz in Canvas and that it has essay questions.`);
   const { questionMap, orderedQuestionIds } = getEssayQuestions_(canvasApiKey, config, quizResult.quizId);
   if (orderedQuestionIds.length === 0) throw new Error("No essay questions were found in this Canvas quiz.");
 

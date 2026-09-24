@@ -72,6 +72,17 @@ function onEdit(e) {
 }
 
 /**
+ * Keyboard shortcut (Ctrl+Alt+Shift+1, a Sheets macro) and menu action: marks the selected
+ * cells as reviewed. Works on one cell, a column, or several selected ranges at once.
+ */
+function markSelectionAsReviewed() {
+  const rangeList = SpreadsheetApp.getActiveSpreadsheet().getActiveRangeList();
+  const ranges = rangeList ? rangeList.getRanges() : [];
+  const cleared = ranges.reduce((sum, range) => sum + clearAIMarks_(range), 0);
+  showToast_(cleared > 0 ? `Marked ${cleared} cell(s) as reviewed.` : "No AI-highlighted cells in the selection.", "Reviewed", 3);
+}
+
+/**
  * Menu action: marks every AI-written cell on "Main Sheet" and "Answers" as reviewed.
  */
 function markAllAsReviewed() {

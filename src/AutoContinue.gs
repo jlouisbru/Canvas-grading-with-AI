@@ -71,3 +71,39 @@ function scheduleContinuation_(handlerName) {
     return false;
   }
 }
+
+const CANCEL_PROPERTY = "AI_CANCEL_REQUESTED";
+
+/**
+ * Asks any running AI operation to stop after the answer it's working on.
+ * @private
+ */
+function requestCancel_() {
+  PropertiesService.getScriptProperties().setProperty(CANCEL_PROPERTY, new Date().toISOString());
+}
+
+/**
+ * @returns {boolean} True if the user has asked the current run to stop.
+ * @private
+ */
+function isCancelRequested_() {
+  return Boolean(PropertiesService.getScriptProperties().getProperty(CANCEL_PROPERTY));
+}
+
+/**
+ * Clears a stop request (at the start of a new run, or once a run has stopped).
+ * @private
+ */
+function clearCancelRequest_() {
+  PropertiesService.getScriptProperties().deleteProperty(CANCEL_PROPERTY);
+}
+
+/**
+ * @param {object|null} status From getRunStatus_().
+ * @returns {boolean} True if the status says a run is working right now (and was updated recently).
+ * @private
+ */
+function isRunInProgress_(status) {
+  if (!status || status.state !== "running") return false;
+  return Date.now() - new Date(status.updatedAt).getTime() < RUN_STALE_MS;
+}
