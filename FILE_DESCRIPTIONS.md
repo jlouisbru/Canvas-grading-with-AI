@@ -30,7 +30,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 ### Constants.gs (~20 lines)
 **Purpose**: Defaults and tunables used across the project. Values in the "Settings" sheet override the defaults.
 - `DEFAULT_CANVAS_BASE_URL`, `DEFAULT_CLAUDE_API_ENDPOINT`
-- `DEFAULT_CLAUDE_GRADING_MODEL`, `DEFAULT_CLAUDE_COMMENTING_MODEL` (default: `claude-opus-5`)
+- `DEFAULT_CLAUDE_GRADING_MODEL`, `DEFAULT_CLAUDE_COMMENTING_MODEL` (default: `claude-sonnet-5`)
 - `ADAPTIVE_THINKING_MODEL_PATTERN`, `ADAPTIVE_THINKING_MAX_TOKENS`, `VALID_EFFORT_LEVELS` - models that think before answering, and the `CLAUDE_EFFORT` values they accept
 - `REFUSAL_FALLBACK_MODEL_PATTERN`, `REFUSAL_FALLBACK_BETA` - models whose declined requests are re-run on Anthropic's recommended fallback model
 - `STRUCTURED_OUTPUT_MODEL_PATTERN` - models that return grades as structured JSON

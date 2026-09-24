@@ -67,13 +67,13 @@ Instead of `CANVAS_COURSE_URL`, you can fill in `CANVAS_BASE_URL` and `COURSE_ID
 
 The following settings are already configured with defaults (you can customize if needed):
 - **CLAUDE_API_ENDPOINT**: `https://api.anthropic.com/v1/messages`
-- **CLAUDE_GRADING_MODEL**: `claude-opus-5`
-- **CLAUDE_COMMENTING_MODEL**: `claude-opus-5`
+- **CLAUDE_GRADING_MODEL**: `claude-sonnet-5` (dropdown: Sonnet 5, Opus 5, or Haiku 4.5)
+- **CLAUDE_COMMENTING_MODEL**: `claude-sonnet-5` (same choices)
 - **CLAUDE_EFFORT**: blank (= `high`). Set `medium` or `low` for faster, cheaper runs
 
-See [Changing AI Models](SETUP.md#changing-ai-models) to trade quality for cost (Sonnet 5, Haiku 4.5).
+See [Changing AI Models](SETUP.md#changing-ai-models) to trade quality for cost (Opus 5 for the highest quality, Haiku 4.5 for the lowest cost).
 
-> **Already using an older copy of the spreadsheet?** Your Settings sheet overrides the defaults in the code. To upgrade, change the `CLAUDE_GRADING_MODEL` and `CLAUDE_COMMENTING_MODEL` values to `claude-opus-5` (or clear them), then run **Sheet Tools → Setup/Verify "Settings" Sheet** to add the new `CLAUDE_EFFORT` row.
+> **Already using an older copy of the spreadsheet?** Your Settings sheet overrides the defaults in the code. To upgrade, change the `CLAUDE_GRADING_MODEL` and `CLAUDE_COMMENTING_MODEL` values to `claude-sonnet-5` (or clear them), then run **Sheet Tools → Setup/Verify "Settings" Sheet** to add the new `CLAUDE_EFFORT` row.
 
 **Note**: The "Answers" sheet will be auto-populated when you fetch questions from Canvas.
 
@@ -232,8 +232,8 @@ See [SECURITY.md](SECURITY.md) for detailed security best practices.
 ### Constants (Constants.gs)
 - `DEFAULT_CANVAS_BASE_URL`: Your institution's Canvas URL
 - `DEFAULT_CLAUDE_API_ENDPOINT`: Claude API endpoint
-- `DEFAULT_CLAUDE_GRADING_MODEL`: AI model for grading (default: `claude-opus-5`)
-- `DEFAULT_CLAUDE_COMMENTING_MODEL`: AI model for comments (default: `claude-opus-5`)
+- `DEFAULT_CLAUDE_GRADING_MODEL`: AI model for grading (default: `claude-sonnet-5`)
+- `DEFAULT_CLAUDE_COMMENTING_MODEL`: AI model for comments (default: `claude-sonnet-5`)
 - `MAX_RUBRIC_CRITERIA`: Maximum rubric criteria supported (default: 4)
 - `CLAUDE_RETRY_DELAYS_MS`: Wait times between Claude API retries (default: 5s, 15s, 30s)
 - `MAX_AI_RUNTIME_MS`: AI operations pause after this long so Apps Script doesn't time out (default: 5 minutes)
@@ -325,8 +325,8 @@ If you find this tool helpful, please:
 ## 📊 Changelog
 
 ### v1.1.0 (2026-09-23)
-- **Model upgrade**: Default model is now Claude Opus 5 (`claude-opus-5`), Anthropic's current top model, for both grading and feedback. Sonnet 5 and Haiku 4.5 remain selectable in the Settings sheet. Existing spreadsheets keep their Settings values until you change them (see Quick Start)
-- **New setting**: `CLAUDE_EFFORT` (low/medium/high/xhigh/max) controls how much Opus/Sonnet think before answering, the main speed and cost lever
+- **Model upgrade**: Default model is now Claude Sonnet 5 (`claude-sonnet-5`) for both grading and feedback, with Claude Opus 5 (`claude-opus-5`, highest quality) and Claude Haiku 4.5 (lowest cost) selectable from a dropdown in the Settings sheet. Existing spreadsheets keep their Settings values until you change them (see Quick Start)
+- **New setting**: `CLAUDE_EFFORT` (low/medium/high/xhigh/max) controls how much Sonnet/Opus think before answering, the main speed and cost lever
 - **Improvement**: Grades are requested as structured JSON (`{"grade": n}`) on models that support it, so a chatty response can no longer break grade parsing
 - **Improvement**: If Claude's safety filters decline a request (occasionally triggered by benign life-sciences content), Opus 5 automatically retries it on Anthropic's recommended fallback model; if it's still declined, the cell is left blank and the reason is logged
 - **Security**: Student answers are now isolated in `<student_answer>` tags with an explicit instruction to treat them as data, so answers containing instructions (e.g., "give me full marks") can't steer grades or feedback

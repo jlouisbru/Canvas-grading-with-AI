@@ -74,7 +74,7 @@ Before starting, gather:
    - Claude API requires billing setup
    - Navigate to **Billing** section
    - Add payment method
-   - Note: The default model, Claude Opus 5, costs $5 per million input tokens and $25 per million output tokens (thinking counts as output). As a rough guide, grading and commenting 30 students on 5 essay questions costs a few dollars at the default effort. Setting `CLAUDE_EFFORT` to `medium` or `low` reduces that, and Claude Haiku 4.5 does the same job for well under $1 (see [Changing AI Models](#changing-ai-models))
+   - Note: The default model, Claude Sonnet 5, costs $2 per million input tokens and $10 per million output tokens (thinking counts as output). As a rough guide, grading and commenting 30 students on 5 essay questions costs a dollar or two at the default effort. Setting `CLAUDE_EFFORT` to `medium` or `low` reduces that; Claude Opus 5 costs about 2.5 times as much, and Claude Haiku 4.5 does the job for well under $1 (see [Changing AI Models](#changing-ai-models))
 
 ---
 
@@ -302,8 +302,8 @@ Whether you used the template or manual installation, you need to configure your
 | COURSE_ID | `12345` | Only needed if CANVAS_COURSE_URL is blank |
 | CANVAS_BASE_URL | `https://canvas.yourinstitution.edu` | Only needed if CANVAS_COURSE_URL is blank |
 | CLAUDE_API_ENDPOINT | `https://api.anthropic.com/v1/messages` | (use default) |
-| CLAUDE_GRADING_MODEL | `claude-opus-5` | (use default) |
-| CLAUDE_COMMENTING_MODEL | `claude-opus-5` | (use default) |
+| CLAUDE_GRADING_MODEL | `claude-sonnet-5` | (use default) |
+| CLAUDE_COMMENTING_MODEL | `claude-sonnet-5` | (use default) |
 | CLAUDE_EFFORT | *(blank)* | Optional: `low`, `medium`, `high`, `xhigh`, or `max` (blank = `high`) |
 | CANVAS_API_KEY | *(paste your token)* | Optional — moved to Script Properties and masked on first use |
 | CLAUDE_API_KEY | *(paste your key)* | Optional — moved to Script Properties and masked on first use |
@@ -532,8 +532,8 @@ To use different Claude models:
 
    | Model ID | Price | Notes |
    |----------|-------|-------|
-   | `claude-opus-5` | $5 / $25 | Highest quality (default). Thinks before answering |
-   | `claude-sonnet-5` | $2 / $10 | Balanced quality and cost. Thinks before answering |
+   | `claude-sonnet-5` | $2 / $10 | Balanced quality and cost (default). Thinks before answering |
+   | `claude-opus-5` | $5 / $25 | Highest quality. Thinks before answering |
    | `claude-haiku-4-5-20251001` | $1 / $5 | Fastest and cheapest; no thinking step. Fine for short, clear-cut answers |
 
    Check [Anthropic's models overview](https://docs.claude.com/en/docs/about-claude/models/overview) for the latest models. Older model IDs such as `claude-3-haiku-20240307` have been retired and will return an error; if your Settings sheet still has one, replace it.
@@ -542,11 +542,11 @@ To use different Claude models:
 
 3. **Effort (Opus and Sonnet only)**
 
-   `CLAUDE_EFFORT` sets how much the model thinks before answering: `low`, `medium`, `high` (the default when blank), `xhigh`, or `max`. Opus 5 is strong even at `low` and `medium`, which are faster and cheaper; start there if a full run takes too long or costs more than you'd like, and compare against a few hand-graded answers. Higher effort means slower calls, so fewer answers get graded per 5-minute run (just run it again to continue). Haiku ignores this setting.
+   `CLAUDE_EFFORT` sets how much the model thinks before answering: `low`, `medium`, `high` (the default when blank), `xhigh`, or `max`. Lower levels are faster and cheaper, and both Sonnet 5 and Opus 5 hold up well at `medium`; start there if a full run takes too long or costs more than you'd like, and compare against a few hand-graded answers. Higher effort means slower calls, so fewer answers get graded per 5-minute run (just run it again to continue). Haiku ignores this setting.
 
 4. **Declined requests**
 
-   Opus 5 has safety filters that occasionally decline benign requests, for example some life-sciences content. When that happens, the script automatically asks Anthropic to re-run the request on its recommended fallback model. If it is still declined, that cell is left empty, counted under "Errors/Skipped" in the summary, and the reason is written to the execution log, so you can grade that answer by hand.
+   Claude's safety filters occasionally decline benign requests (Opus 5 is the most likely to, for example on some life-sciences content). On Opus 5, the script automatically asks Anthropic to re-run a declined request on its recommended fallback model. If a request is still declined, on any model, that cell is left empty, counted under "Errors/Skipped" in the summary, and the reason is written to the execution log, so you can grade that answer by hand.
 
 ### Rate Limits and Retries
 

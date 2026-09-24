@@ -4,8 +4,8 @@
 const DEFAULT_CANVAS_BASE_URL = "https://canvas.chapman.edu";
 const DEFAULT_CLAUDE_API_ENDPOINT = "https://api.anthropic.com/v1/messages";
 // Use fixed model IDs (never floating aliases) so grading stays consistent across a term.
-const DEFAULT_CLAUDE_GRADING_MODEL = "claude-opus-5";
-const DEFAULT_CLAUDE_COMMENTING_MODEL = "claude-opus-5";
+const DEFAULT_CLAUDE_GRADING_MODEL = "claude-sonnet-5";
+const DEFAULT_CLAUDE_COMMENTING_MODEL = "claude-sonnet-5";
 const ANTHROPIC_API_VERSION = "2023-06-01";
 
 // Models that think before answering (adaptive thinking) and accept the `effort` setting.

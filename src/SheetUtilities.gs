@@ -50,8 +50,8 @@ function setupSettingsSheet() {
     ["COURSE_ID", "", "Optional if CANVAS_COURSE_URL is set. Otherwise, enter the Canvas Course ID here."],
     ["CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL, "Optional if CANVAS_COURSE_URL is set. Otherwise, the base URL of your Canvas instance (e.g., https://canvas.yourinstitution.edu)."],
     ["CLAUDE_API_ENDPOINT", DEFAULT_CLAUDE_API_ENDPOINT, "The API endpoint for Claude Messages API."],
-    ["CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL, "Claude model for auto-grading: claude-opus-5 (highest quality), claude-sonnet-5 (balanced), or claude-haiku-4-5-20251001 (fastest, lowest cost)."],
-    ["CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL, "Claude model for generating comments: claude-opus-5 (highest quality), claude-sonnet-5 (balanced), or claude-haiku-4-5-20251001 (fastest, lowest cost)."],
+    ["CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL, "Claude model for auto-grading: claude-sonnet-5 (balanced, default), claude-opus-5 (highest quality), or claude-haiku-4-5-20251001 (fastest, lowest cost)."],
+    ["CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL, "Claude model for generating comments: claude-sonnet-5 (balanced, default), claude-opus-5 (highest quality), or claude-haiku-4-5-20251001 (fastest, lowest cost)."],
     ["CLAUDE_EFFORT", "", "Optional: how much the model thinks before answering (low, medium, high, xhigh, max). Blank = high. Lower is faster and cheaper. Applies to Opus and Sonnet models; ignored for Haiku."],
     ["CANVAS_API_KEY", "", "Paste your Canvas API Key here to save it. It will be stored securely in Script Properties and replaced with ••••• automatically."],
     ["CLAUDE_API_KEY", "", "Paste your Claude API Key here to save it. It will be stored securely in Script Properties and replaced with ••••• automatically."]
