@@ -213,20 +213,16 @@ function writeToSheet_(sheet, sheetData, applyHeaderFitPlusPadding = false) {
 }
 
 /**
- * Parses rubric data from the "Answers" sheet.
- * @returns {object|null} A map of question ID to rubric details, or null if "Answers" sheet not found.
+ * Parses every question row of the "Answers" sheet.
+ * @returns {object<string, {row: number, title: string, prompt: string, key: string, maxPoints: number, criteria: Array<{description: string, points: number}>}>|null}
+ *          A map of question ID to its details (row is the 1-based sheet row), or null if the "Answers" sheet doesn't exist.
  * @private
  */
-function parseRubricDataFromAnswersSheet_() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi(); // Ensure ui is defined
-  const answersSheet = spreadsheet.getSheetByName("Answers");
-  if (!answersSheet) {
-    ui.alert("Error", "The 'Answers' sheet was not found. Run 'Fetch Question Prompts'.", ui.ButtonSet.OK);
-    return null;
-  }
+function parseAnswersSheet_() {
+  const answersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ANSWERS_SHEET_NAME);
+  if (!answersSheet) return null;
 
-  const rubricDataMap = {};
+  const questions = {};
   const answersSheetValues = answersSheet.getDataRange().getValues();
   for (let i = 1; i < answersSheetValues.length; i++) {
     const row = answersSheetValues[i];
@@ -235,37 +231,32 @@ function parseRubricDataFromAnswersSheet_() {
     if (!qIdMatch?.[1]) continue;
     const qId = qIdMatch[1];
 
-    const overallKey = String(row[2] || "").trim();
-    const canvasMaxPointsStr = String(row[3] || "").trim();
-    const canvasMaxPoints = canvasMaxPointsStr && !isNaN(parseFloat(canvasMaxPointsStr)) ? parseFloat(canvasMaxPointsStr) : 0;
-
-    if (canvasMaxPoints <= 0 && overallKey) {
-        Logger.log(`Warning for QID ${qId}: Max Points (Col D) is missing or zero. Value: '${canvasMaxPointsStr}'. Rubric grading may rely on criteria points total if Canvas points are 0.`);
-    }
+    const maxPointsStr = String(row[3] ?? "").trim();
+    const maxPoints = maxPointsStr && !isNaN(parseFloat(maxPointsStr)) ? parseFloat(maxPointsStr) : 0;
 
     const criteria = [];
     for (let j = 0; j < MAX_RUBRIC_CRITERIA; j++) {
       const descColIndex = 4 + (j * 2);
       const ptsColIndex = descColIndex + 1;
-      if (descColIndex < row.length && ptsColIndex < row.length) {
-        const desc = String(row[descColIndex]).trim();
-        const ptsStr = String(row[ptsColIndex]).trim();
-        if (desc && ptsStr && !isNaN(parseFloat(ptsStr)) && parseFloat(ptsStr) > 0) {
-          criteria.push({ description: desc, points: parseFloat(ptsStr) });
-        } else if (desc || (ptsStr && ptsStr !== "0"  && ptsStr !== "")) {
-          Logger.log(`QID ${qId}, Criterion ${j+1}: Incomplete or invalid. Description: '${desc}', Points: '${ptsStr}'. Skipping this criterion.`);
-        }
-      } else {
-        break;
+      if (ptsColIndex >= row.length) break;
+      const desc = String(row[descColIndex]).trim();
+      const ptsStr = String(row[ptsColIndex]).trim();
+      if (desc && ptsStr && !isNaN(parseFloat(ptsStr)) && parseFloat(ptsStr) > 0) {
+        criteria.push({ description: desc, points: parseFloat(ptsStr) });
+      } else if (desc || (ptsStr && ptsStr !== "0")) {
+        Logger.log(`QID ${qId}, Criterion ${j+1}: Incomplete or invalid. Description: '${desc}', Points: '${ptsStr}'. Skipping this criterion.`);
       }
     }
 
-    if (canvasMaxPoints > 0 || criteria.length > 0 ) {
-         rubricDataMap[qId] = { overallKey, canvasMaxPoints, criteria };
-    } else if (overallKey) {
-         rubricDataMap[qId] = { overallKey, canvasMaxPoints: 0, criteria: [] };
-    }
+    questions[qId] = {
+      row: i + 1,
+      title: qIdTitleCell.replace(/\[Q ID: \d+\]\s*/, '').trim(),
+      prompt: String(row[1] ?? "").trim(),
+      key: String(row[2] ?? "").trim(),
+      maxPoints,
+      criteria
+    };
   }
-  Logger.log(`Parsed rubric data for ${Object.keys(rubricDataMap).length} questions from "Answers" sheet.`);
-  return rubricDataMap;
+  Logger.log(`Parsed ${Object.keys(questions).length} questions from "Answers" sheet.`);
+  return questions;
 }

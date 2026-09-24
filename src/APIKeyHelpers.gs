@@ -63,7 +63,7 @@ function maskSettingInSheet_(settingName) {
 function handleCanvasAuthError_() {
   clearStoredApiKey_("CANVAS_API_KEY", "Canvas");
   clearSettingsCache_();
-  SpreadsheetApp.getUi().alert(
+  notify_(
     "Canvas API Key Rejected (401)",
     "Canvas rejected your API key — it may be invalid, expired, or lack the required permissions.\n\n" +
     "Your stored key has been cleared.\n\n" +
@@ -72,8 +72,7 @@ function handleCanvasAuthError_() {
     "2. Generate a new access token and copy it.\n" +
     "3. Paste it into the CANVAS_API_KEY row of the 'Settings' sheet.\n" +
     "4. Re-run the Canvas operation.\n\n" +
-    "Alternatively, re-run the operation and enter the key when prompted.",
-    SpreadsheetApp.getUi().ButtonSet.OK
+    "Alternatively, re-run the operation and enter the key when prompted."
   );
 }
 
@@ -87,7 +86,7 @@ function handleCanvasAuthError_() {
 function handleClaudeAuthError_() {
   clearStoredApiKey_("CLAUDE_API_KEY", "Claude");
   clearSettingsCache_();
-  SpreadsheetApp.getUi().alert(
+  notify_(
     "Claude API Key Rejected (401)",
     "The Claude API rejected your key — it may be invalid, expired, or lack billing credits.\n\n" +
     "Your stored key has been cleared.\n\n" +
@@ -95,26 +94,20 @@ function handleClaudeAuthError_() {
     "1. Go to console.anthropic.com and copy a valid API key.\n" +
     "2. Paste it into the CLAUDE_API_KEY row of the 'Settings' sheet.\n" +
     "3. Re-run the grading operation.\n\n" +
-    "Alternatively, re-run the operation and enter the key when prompted.",
-    SpreadsheetApp.getUi().ButtonSet.OK
+    "Alternatively, re-run the operation and enter the key when prompted."
   );
 }
 
 /**
- * Retrieves an API key from Script Properties, Settings sheet, or prompts the user.
- * Applies aggressive whitespace sanitization to handle copy-paste formatting issues
- * (extra spaces, newlines, non-breaking spaces, etc.).
- * On each call, also re-checks the Settings sheet for a freshly pasted key, so that
- * pasting a new key into Settings works without needing to reset anything manually.
+ * Looks up a saved API key without prompting: Script Properties first, then a key freshly
+ * pasted into the Settings sheet (which is then saved to Script Properties and masked).
  * @param {string} serviceName User-friendly name of the service (e.g., "Canvas", "Claude").
  * @param {string} propertyKey The key used for storing/retrieving from Script Properties.
  * @param {string} settingSheetKey The key name in the "Settings" sheet.
- * @param {string} promptTitle Title for the UI prompt if key is not found.
- * @param {string} promptInstructions Instructions for the UI prompt.
- * @returns {string|null} The API key or null if not found/cancelled.
+ * @returns {string|null} The API key, or null if none is saved.
  * @private
  */
-function getServiceApiKey_(serviceName, propertyKey, settingSheetKey, promptTitle, promptInstructions) {
+function findSavedApiKey_(serviceName, propertyKey, settingSheetKey) {
   const scriptProperties = PropertiesService.getScriptProperties();
 
   // 1. Check Script Properties first (fastest path).
@@ -146,9 +139,34 @@ function getServiceApiKey_(serviceName, propertyKey, settingSheetKey, promptTitl
     Logger.log(`${serviceName} API Key read from Settings sheet (sanitized), saved to Script Properties, and masked.`);
     return sheetKey;
   }
+  return null;
+}
 
-  // 3. Prompt the user.
-  const ui = SpreadsheetApp.getUi();
+/**
+ * Retrieves an API key from Script Properties, Settings sheet, or prompts the user.
+ * Applies aggressive whitespace sanitization to handle copy-paste formatting issues
+ * (extra spaces, newlines, non-breaking spaces, etc.).
+ * On each call, also re-checks the Settings sheet for a freshly pasted key, so that
+ * pasting a new key into Settings works without needing to reset anything manually.
+ * @param {string} serviceName User-friendly name of the service (e.g., "Canvas", "Claude").
+ * @param {string} propertyKey The key used for storing/retrieving from Script Properties.
+ * @param {string} settingSheetKey The key name in the "Settings" sheet.
+ * @param {string} promptTitle Title for the UI prompt if key is not found.
+ * @param {string} promptInstructions Instructions for the UI prompt.
+ * @returns {string|null} The API key or null if not found/cancelled.
+ * @private
+ */
+function getServiceApiKey_(serviceName, propertyKey, settingSheetKey, promptTitle, promptInstructions) {
+  const savedKey = findSavedApiKey_(serviceName, propertyKey, settingSheetKey);
+  if (savedKey) return savedKey;
+
+  // 3. Prompt the user (only possible when a UI is available).
+  const ui = getUiOrNull_();
+  if (!ui) {
+    Logger.log(`No saved ${serviceName} API key, and no UI available to prompt for one.`);
+    return null;
+  }
+  const scriptProperties = PropertiesService.getScriptProperties();
   const response = ui.prompt(promptTitle, promptInstructions, ui.ButtonSet.OK_CANCEL);
   if (response.getSelectedButton() === ui.Button.OK) {
     const enteredKey = sanitizeApiKey_(response.getResponseText());

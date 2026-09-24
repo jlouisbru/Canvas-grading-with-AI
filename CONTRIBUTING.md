@@ -57,7 +57,7 @@ If applicable, add screenshots.
 - Google Sheets: [e.g., Web version]
 - Canvas LMS: [e.g., Cloud instance]
 - Browser: [e.g., Chrome 120]
-- Claude Model: [e.g., claude-3-haiku-20240307]
+- Claude Model: [e.g., claude-opus-5]
 
 ## Additional Context
 Any other context about the problem.
@@ -303,7 +303,7 @@ Adds specific steps for Apple Silicon users.
 
 1. **Update documentation** for any changed functionality
 2. **Add tests** if applicable (manual test procedures)
-3. **Update CHANGELOG.md** with your changes
+3. **Update the Changelog** section of README.md with your changes
 4. **Ensure code follows** style guidelines
 5. **Get at least one review** from a maintainer
 6. **Squash commits** if requested
@@ -351,7 +351,7 @@ Closes #123
 
 Contributors will be recognized in:
 - README.md Contributors section
-- CHANGELOG.md for each release
+- The Changelog section of README.md for each release
 - Special thanks in release notes
 
 ## Questions?

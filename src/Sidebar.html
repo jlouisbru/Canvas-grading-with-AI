@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <base target="_top">
+  <style>
+    :root {
+      --ink: #1f1f1f;
+      --muted: #5f6368;
+      --line: #e3e3e3;
+      --surface: #ffffff;
+      --wash: #f6f4fb;
+      --accent: #5b3fb5;
+      --accent-ink: #ffffff;
+      --ok: #1e8e3e;
+      --warn: #b06000;
+      --fail: #c5221f;
+      --todo: #9aa0a6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px 14px 20px; background: var(--surface); color: var(--ink);
+      font: 13px/1.45 "Google Sans Text", Roboto, Arial, sans-serif;
+    }
+    h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
+    .lede { color: var(--muted); margin: 0 0 14px; }
+    .banner {
+      display: none; border-left: 3px solid var(--accent); background: var(--wash);
+      padding: 8px 10px; border-radius: 4px; margin-bottom: 14px;
+    }
+    .banner.show { display: block; }
+    .banner strong { display: block; margin-bottom: 2px; }
+    .banner .stop { display: none; margin-top: 8px; border-color: var(--fail); color: var(--fail); }
+    .banner.active .stop { display: inline-block; }
+    ol { list-style: none; margin: 0; padding: 0; }
+    li.step {
+      position: relative; padding: 10px 10px 10px 40px; border: 1px solid transparent;
+      border-radius: 8px; margin-bottom: 4px; transition: background 150ms ease, border-color 150ms ease;
+    }
+    li.step.current { background: var(--wash); border-color: #d9d0f3; }
+    .num {
+      position: absolute; left: 10px; top: 10px; width: 22px; height: 22px; border-radius: 50%;
+      display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; background: var(--todo);
+    }
+    .ok .num { background: var(--ok); }
+    .warn .num { background: var(--warn); }
+    .fail .num { background: var(--fail); }
+    .current.todo .num, .current.fail .num { background: var(--accent); }
+    .title { font-weight: 600; }
+    .detail { color: var(--muted); margin-top: 1px; }
+    .fail .detail { color: var(--fail); }
+    .current.fail .detail { color: var(--ink); }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    button {
+      font: inherit; font-weight: 500; border-radius: 16px; padding: 4px 12px; cursor: pointer;
+      border: 1px solid #c7c7c7; background: var(--surface); color: var(--accent);
+    }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    button:hover:not(:disabled) { filter: brightness(0.95); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .status { min-height: 18px; margin: 10px 0 0; color: var(--muted); }
+    .status.error { color: var(--fail); }
+    footer { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; color: var(--muted); }
+    footer .row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .link { background: none; border: none; padding: 0; color: var(--accent); border-radius: 0; }
+  </style>
+</head>
+<body>
+  <h1>Grading with AI</h1>
+  <p class="lede">Work top to bottom. Each step shows what's done and what's next.</p>
+
+  <div id="banner" class="banner" role="status" aria-live="polite">
+    <strong id="banner-title"></strong>
+    <span id="banner-text"></span>
+    <div><button class="stop" type="button" data-fn="stopAIRun">Stop</button></div>
+  </div>
+
+  <ol id="steps"></ol>
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <footer>
+    <div class="row">
+      <span id="settings-summary">Loading…</span>
+      <button class="link" type="button" data-fn="showSheet" data-arg="Settings">Change</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <span>Tip: select reviewed cells and press Ctrl+Alt+Shift+1 (⌘+Option+Shift+1 on Mac) to clear their highlight.</span>
+      <button class="link" type="button" id="refresh">Refresh</button>
+    </div>
+  </footer>
+
+  <script>
+    const STEPS = [
+      { id: "setup", title: "Connect Canvas and Claude", actions: [
+        { label: "Open Settings", fn: "showSheet", arg: "Settings" },
+        { label: "Check Setup", fn: "checkSetup", primary: true } ] },
+      { id: "fetch", title: "Fetch from Canvas", actions: [
+        { label: "Fetch", fn: "fetchEverythingFromCanvas", primary: true } ] },
+      { id: "keys", title: "Answer keys", actions: [
+        { label: "Draft with AI", fn: "draftAnswerKeysWithAI" },
+        { label: "Open Answers", fn: "showSheet", arg: "Answers" } ] },
+      { id: "grade", title: "Grade answers", actions: [
+        { label: "Grade", fn: "gradeAnswers", primary: true } ] },
+      { id: "feedback", title: "Write feedback", actions: [
+        { label: "Write Feedback", fn: "writeFeedback", primary: true } ] },
+      { id: "upload", title: "Review and upload", actions: [
+        { label: "Open Main Sheet", fn: "showSheet", arg: "Main Sheet" },
+        { label: "Mark Selected Reviewed", fn: "markSelectionAsReviewed" },
+        { label: "Mark All Reviewed", fn: "markAllAsReviewed" },
+        { label: "Upload to Canvas", fn: "uploadEssayGradesToCanvas", primary: true } ] }
+    ];
+    const ACTIVE_RUN_STATES = ["running", "scheduled"];
+    const STALE_RUN_MS = 10 * 60 * 1000; // An "active" run with no update for this long has probably stopped.
+    const AI_RUN_ACTIONS = ["gradeAnswers", "writeFeedback", "draftAnswerKeysWithAI"];
+    const ALWAYS_AVAILABLE = ["stopAIRun", "markSelectionAsReviewed", "showSheet"];
+    let busy = false;
+    let runActive = false;
+    let pollTimer = null;
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function stepStates(status) {
+      const byId = {};
+      status.steps.forEach(s => { byId[s.id] = s; });
+      const { configError, hasCanvasKey, hasClaudeKey } = status.setup;
+      const missingKeys = [!hasCanvasKey && "Canvas", !hasClaudeKey && "Claude"].filter(Boolean);
+      const setup = configError ? { state: "fail", detail: configError }
+        : missingKeys.length ? { state: "fail", detail: `${missingKeys.join(" and ")} API key not saved yet. Paste it into Settings.` }
+        : { state: "ok", detail: "Settings filled in. Check Setup tests the connection." };
+      const fetch = byId.responses
+        ? { state: byId.responses.state, detail: `${byId.fetch.detail} · ${byId.responses.detail}` }
+        : (byId.fetch || { state: "todo", detail: "" });
+      const pending = { state: "todo", detail: "Available after fetching." };
+      return {
+        setup, fetch,
+        keys: byId.keys || pending,
+        grade: byId.grade || pending,
+        feedback: byId.feedback || pending,
+        upload: byId.review || pending
+      };
+    }
+
+    function render(status) {
+      const states = stepStates(status);
+      const list = document.getElementById("steps");
+      list.replaceChildren();
+      let currentMarked = false;
+      STEPS.forEach((step, i) => {
+        const info = states[step.id];
+        const li = el("li", `step ${info.state}`);
+        if (!currentMarked && info.state !== "ok") { li.classList.add("current"); currentMarked = true; }
+        li.append(el("span", "num", String(i + 1)), el("div", "title", step.title), el("div", "detail", info.detail.charAt(0).toUpperCase() + info.detail.slice(1)));
+        const actions = el("div", "actions");
+        step.actions.forEach(action => {
+          const button = el("button", action.primary ? "primary" : "", action.label);
+          button.type = "button";
+          button.dataset.fn = action.fn;
+          if (action.arg) button.dataset.arg = action.arg;
+          actions.append(button);
+        });
+        li.append(actions);
+        list.append(li);
+      });
+
+      const s = status.settings;
+      document.getElementById("settings-summary").textContent =
+        `${s.gradingModel} · effort ${s.effort} · generosity ${s.generosity}`;
+
+      runActive = isRunActive(status.run);
+      renderBanner(status.run);
+      setBusy(busy);
+      clearTimeout(pollTimer);
+      if (runActive || busy) pollTimer = setTimeout(refresh, 5000);
+    }
+
+    function runAgeMs(run) {
+      return Date.now() - new Date(run.updatedAt).getTime();
+    }
+
+    function isRunActive(run) {
+      return Boolean(run && ACTIVE_RUN_STATES.includes(run.state) && runAgeMs(run) < STALE_RUN_MS);
+    }
+
+    function renderBanner(run) {
+      const banner = document.getElementById("banner");
+      const show = run && (ACTIVE_RUN_STATES.includes(run.state) || runAgeMs(run) < 30 * 60 * 1000);
+      banner.classList.toggle("show", Boolean(show));
+      banner.classList.toggle("active", isRunActive(run));
+      if (!show) return;
+      if (ACTIVE_RUN_STATES.includes(run.state) && !isRunActive(run)) {
+        document.getElementById("banner-title").textContent = "May have stopped";
+        document.getElementById("banner-text").textContent =
+          `No progress for over 10 minutes. Written so far: ${run.written}. Run the step again to continue; finished cells are skipped.`;
+        return;
+      }
+      const titles = { running: "Working… (Stop finishes the current answer first)", scheduled: "Continuing in the background", paused: "Paused", stopped: "Stopped", done: "Finished" };
+      document.getElementById("banner-title").textContent = titles[run.state] || "Last run";
+      document.getElementById("banner-text").textContent = `${run.message} Written so far: ${run.written}.`;
+    }
+
+    function setBusy(isBusy) {
+      busy = isBusy;
+      document.querySelectorAll("button[data-fn]").forEach(b => {
+        const fn = b.dataset.fn;
+        b.disabled = !ALWAYS_AVAILABLE.includes(fn) && (isBusy || (runActive && AI_RUN_ACTIONS.includes(fn)));
+      });
+    }
+
+    function showStatus(text, isError) {
+      const node = document.getElementById("status");
+      node.textContent = text;
+      node.classList.toggle("error", Boolean(isError));
+    }
+
+    function refresh() {
+      google.script.run
+        .withSuccessHandler(render)
+        .withFailureHandler(err => showStatus(`Couldn't load status: ${err.message}`, true))
+        .getStartHereStatus();
+    }
+
+    function runAction(fn, arg) {
+      if (ALWAYS_AVAILABLE.includes(fn)) {
+        // Runs alongside whatever else is in progress, without locking the other buttons.
+        if (fn === "stopAIRun") showStatus("Stopping… the current answer finishes first.");
+        const runner = google.script.run
+          .withSuccessHandler(() => { if (fn === "stopAIRun") showStatus(""); refresh(); })
+          .withFailureHandler(err => { showStatus(err.message, true); refresh(); });
+        if (arg) runner[fn](arg); else runner[fn]();
+        return;
+      }
+      setBusy(true);
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(refresh, 4000); // Pick up the run's status (and show Stop) while it works.
+      showStatus(fn === "showSheet" ? "" : "Working… a dialog may appear over the sheet.");
+      const runner = google.script.run
+        .withSuccessHandler(() => { setBusy(false); showStatus(""); refresh(); })
+        .withFailureHandler(err => { setBusy(false); showStatus(err.message, true); refresh(); });
+      if (arg) runner[fn](arg); else runner[fn]();
+    }
+
+    document.addEventListener("click", event => {
+      const button = event.target.closest("button[data-fn]");
+      if (button && !button.disabled) runAction(button.dataset.fn, button.dataset.arg);
+    });
+    document.getElementById("refresh").addEventListener("click", () => { showStatus(""); refresh(); });
+    refresh();
+  </script>
+</body>
+</html>

@@ -74,7 +74,7 @@ Before starting, gather:
    - Claude API requires billing setup
    - Navigate to **Billing** section
    - Add payment method
-   - Note: Haiku model is very cost-effective (~$0.25 per million input tokens)
+   - Note: The default model, Claude Sonnet 5, costs $2 per million input tokens and $10 per million output tokens (thinking counts as output). As a rough guide, grading and commenting 30 students on 5 essay questions costs a dollar or two at the default effort. Setting `CLAUDE_EFFORT` to `medium` or `low` reduces that; Claude Opus 5 costs about 2.5 times as much, and Claude Haiku 4.5 does the job for well under $1 (see [Changing AI Models](#changing-ai-models))
 
 ---
 
@@ -118,10 +118,11 @@ Before starting, gather:
 
 ### Step 3: Verify Installation
 
-1. **Check for the menus**:
-   - Look for **Canvas Tools**, **Grading Tools**, and **Sheet Tools** in the menu bar
-   - If you don't see them, close the spreadsheet and reopen it
+1. **Check for the menu**:
+   - Look for **Grading with AI** in the menu bar
+   - If you don't see it, close the spreadsheet and reopen it
    - Or wait 30 seconds and refresh the page
+   - Choose **Grading with AI → Start Here** to open the step-by-step panel
 
 2. **Verify sheets**:
    - You should see three tabs at the bottom:
@@ -291,44 +292,42 @@ Whether you used the template or manual installation, you need to configure your
 
 1. **Open the Settings sheet** (click the tab at the bottom)
 
-2. **If using the template**: You'll see pre-filled rows. Update the **Value** column (Column B) for:
-   
-3. **If manual installation**: Add these rows starting from Row 2:
+2. **If using the template**: You'll see pre-filled rows. Update the **Value** column (Column B).
+
+3. **If manual installation**: Refresh the spreadsheet, then run **Grading with AI → More Tools → Set Up Settings Sheet**. It creates the rows below with defaults, descriptions, and dropdowns.
 
 | Setting Name | Example Value | Your Value |
 |--------------|---------------|------------|
-| CANVAS_BASE_URL | `https://canvas.chapman.edu` | Your institution's URL |
-| COURSE_ID | `12345` | Your course ID |
-| ASSIGNMENT_ID | `67890` | Your assignment ID |
-| CLAUDE_API_ENDPOINT | `https://api.anthropic.com/v1/messages` | (use default) |
-| CLAUDE_GRADING_MODEL | `claude-3-haiku-20240307` | (use default) |
-| CLAUDE_COMMENTING_MODEL | `claude-3-haiku-20240307` | (use default) |
+| CANVAS_QUIZ_URL | `https://canvas.yourinstitution.edu/courses/12345/quizzes/67890` | The quiz's link, copied from the address bar |
+| CLAUDE_GRADING_MODEL | `claude-sonnet-5` | (use default) |
+| CLAUDE_COMMENTING_MODEL | `claude-sonnet-5` | (use default) |
+| CLAUDE_EFFORT | `high` | `low`, `medium`, `high`, `xhigh`, or `max` |
+| GRADING_GENEROSITY | `3` | 1 (Very Strict) to 5 (Very Generous) |
+| INCLUDE_ANSWER_KEY_IN_FEEDBACK | `No` | `Yes` to start feedback with the correct answer |
+| CANVAS_API_KEY | *(paste your token)* | Optional — moved to Script Properties and masked on first use |
+| CLAUDE_API_KEY | *(paste your key)* | Optional — moved to Script Properties and masked on first use |
 
-**Note**: If using the template, the API endpoint and model settings are already configured. You only need to update the Canvas-specific settings.
+**Note**: If using the template, the model and other settings are already configured. You only need to paste the quiz link and your API keys.
 
-### Step 2: Find Canvas IDs
+### Step 2: Copy the Quiz Link
 
-#### Finding Course ID
-1. Open your Canvas course
-2. Look at the URL: `https://canvas.institution.edu/courses/12345`
-3. The number after `/courses/` is your Course ID
+1. In Canvas, open the quiz you want to grade
+2. Copy the whole address from the browser's address bar. It looks like `https://canvas.institution.edu/courses/12345/quizzes/67890`
+3. Paste it into the `CANVAS_QUIZ_URL` row
 
-#### Finding Assignment ID
-1. Open the assignment/quiz in Canvas
-2. Look at the URL: `https://canvas.institution.edu/courses/12345/assignments/67890`
-3. The number after `/assignments/` is your Assignment ID
+A SpeedGrader link (`.../gradebook/speed_grader?assignment_id=...`) or an assignment link (`.../assignments/67890`) for the quiz works too. Run **Check Setup** to confirm it points to the right course and quiz.
+
+**Older setups**: sheets that still have `CANVAS_COURSE_URL` + `ASSIGNMENT_ID` (or `COURSE_ID` + `CANVAS_BASE_URL`) keep working. If `CANVAS_QUIZ_URL` is filled in, it's used instead. To use a custom Claude endpoint, add a `CLAUDE_API_ENDPOINT` row.
 
 ---
 
 ## First-Time Authorization
 
-When you first use any AI grading feature, you'll need to authorize the script and enter your API keys.
+The first time you use the menu, Google asks you to authorize the script.
 
 ### Step 1: Grant Script Permissions
 
-1. **Trigger authorization**:
-   - Click **Canvas Tools** in the menu
-   - Select any option (e.g., "Fetch Question Prompts to 'Answers' Sheet")
+1. **Trigger authorization**: click **Grading with AI → Check Setup** (or any other item)
 
 2. **Authorization dialog appears**:
    - You'll see: "Authorization Required"
@@ -345,84 +344,49 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - It's safe to proceed
 
 5. **Review and allow**:
-   - Review the permissions requested
+   - The script asks to view and manage this spreadsheet, connect to external services (Canvas and Anthropic), display dialogs and the side panel, and **run when you're not present** (used only to continue long grading runs in the background)
    - Click **Allow**
 
-✅ **Done!** You only need to do this once per spreadsheet.
+✅ **Done!** You only need to do this once per spreadsheet. (If you update the code later and it needs a new permission, Google asks again.)
 
-### Step 2: Enter API Keys
+### Step 2: Save Your API Keys
 
-#### Canvas API Token
-1. Click **Canvas AI Grading** → **Fetch Data** → **Fetch Question Prompts**
-2. You'll be prompted to enter Canvas API Token
-3. Paste your Canvas token
-4. Click **OK**
+Paste your Canvas token into the `CANVAS_API_KEY` row and your Claude key into the `CLAUDE_API_KEY` row of the Settings tab. The first time the script uses them, it moves them into Script Properties and replaces the cells with `•••••`.
 
-#### Claude API Key
-1. Click **Canvas AI Grading** → **AI Grading** → **Auto-Grade with Claude**
-2. You'll be prompted to enter Claude API Key
-3. Paste your Claude key
-4. Click **OK**
-
-**Security Note**: These keys are stored in Script Properties, not visible in the spreadsheet.
+If you'd rather not paste them into the sheet, leave those rows empty: you'll be prompted for each key the first time it's needed.
 
 ---
 
 ## Testing Your Installation
 
-### Test 1: Fetch Question Prompts
+The quickest test is the **Start Here** panel (**Grading with AI → Start Here**): work through its steps top to bottom. The checklist turns green as each step is done.
 
-1. Click **Canvas Tools** → **Fetch Question Prompts to "Answers" Sheet**
-2. Enter your Canvas API token when prompted (first time only)
-3. Wait for processing
-4. Check the **Answers** sheet - it should populate with:
-   - Column A: Question ID & Title (from Canvas)
-   - Column B: Full Question Prompt (from Canvas)
-   - Column C: Overall Answer Key (empty - for you to fill in)
-   - Column D: Max Points (from Canvas)
-   - Columns E+: Rubric Criteria (if rubrics are used in Canvas)
+### Test 1: Check Setup
 
-✅ **Success**: Questions appear in Answers sheet  
-❌ **Failed**: See Troubleshooting section
+Click **Check Setup**. Every line should show ✅:
+- Canvas settings, Canvas API key, and Quiz (with the number of essay questions)
+- Claude API key, Grading model, and Feedback model
 
-### Test 2: Add Manual Answer Key
+Anything marked ❌ comes with a plain-language explanation of what to fix.
 
-1. Go to **Answers** sheet
-2. In Column C (Overall Answer Key), add an ideal answer for one question
-3. This is what Claude will grade against
+### Test 2: Fetch from Canvas
 
-### Test 3: Fetch Student Submissions
+1. Click **1. Fetch from Canvas**
+2. Check the **Answers** sheet: one row per essay question (title, prompt, and max points; Column C and Columns E+ are yours to fill)
+3. Check **Main Sheet**: one row per student, with Answer, Grade, and Comment columns for each question
 
-1. Return to main data sheet
-2. Click **Canvas Tools** → **Fetch Essay Quiz Responses (Main Sheet)**
-3. Wait for processing
-4. Student data should populate with:
-   - Student Name (Sortable)
-   - Canvas User ID
-   - Question columns with student answers
-   - Grade columns (empty)
-   - Comment columns (empty)
+### Test 3: Add an Answer Key
 
-✅ **Success**: Student names and answers appear  
-❌ **Failed**: See Troubleshooting section
+Type an answer key into Column C of the Answers sheet for at least one question, or click **2. Draft Answer Keys with AI** and review the highlighted drafts.
 
-### Test 4: Grade One Question with AI
+### Test 4: Grade
 
-1. Ensure you have:
-   - Answer key in Answers sheet (Column C)
-   - Student submission in main sheet
-   - Empty grade cell for a student
+1. Click **3. Grade Answers**
+2. The confirmation shows how many answers will be graded, the model, and the generosity level
+3. Click **Yes** and watch the grades appear, highlighted in light purple until you review them
 
-2. Click **Grading Tools** → **Grade without Rubric (using Claude.ai)**
-3. Enter your Claude API key when prompted (first time only)
-4. Select generosity level:
-   - Try "3" for Normal/Balanced (default)
-   - Range: 1 (Very Strict) to 5 (Very Generous)
-5. Confirm the operation
-6. Wait for processing - you'll see toast notifications showing progress
-
-✅ **Success**: Grade appears in the grade column  
-❌ **Failed**: Check API keys and see Troubleshooting
+✅ **Success**: Grades appear in the grade columns
+❌ **Failed**: Run **Check Setup** and see Troubleshooting
 
 ---
 
@@ -430,7 +394,7 @@ When you first use any AI grading feature, you'll need to authorize the script a
 
 ### Menu Not Appearing
 
-**Problem**: Canvas Tools, Grading Tools, and Sheet Tools menus don't show up
+**Problem**: The **Grading with AI** menu doesn't show up
 
 **Solutions**:
 1. Wait 30 seconds and refresh the page
@@ -438,7 +402,7 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - Open Extensions → Apps Script
    - Click the ▶ (Run) icon next to any function
    - Check for errors in the execution log
-3. Ensure all 12 `.gs` files are added
+3. Ensure all `.gs` files and `Sidebar.html` from the `src/` folder are added
 4. Try a hard refresh: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)
 5. Check the `onOpen()` function in SheetUtilities.gs is present
 
@@ -462,16 +426,15 @@ When you first use any AI grading feature, you'll need to authorize the script a
 2. Check token hasn't expired
 3. Ensure Canvas URL is correct (no trailing slash)
 4. Verify Course ID and Assignment ID are correct
-5. Re-enter API key:
-   - Apps Script → Run → Delete `CANVAS_API_KEY` from Script Properties
-   - Retry operation to re-enter token
+5. Run **Check Setup**: it tells you whether the problem is the URL, the course, the quiz, or the token
+6. Replace the token: **Grading with AI → More Tools → Reset Canvas API Key**, then paste the new one into Settings
 
 ### Claude API Errors
 
 **Problem**: "Claude API Error" or rate limiting
 
 **Solutions**:
-1. Verify Claude API key is correct
+1. Run **Check Setup**: it confirms whether the key works and whether both model IDs exist
 2. Check billing is set up in Anthropic Console
 3. Ensure you have credits/balance
 4. If rate limited, wait and retry
@@ -498,7 +461,21 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - Extensions → Apps Script
    - Click **Executions** (clock icon)
    - Review recent runs for errors
-4. Ensure generosity level was selected
+4. Look at the confirmation before grading: its "Skipped" list names questions with no answer key or missing points
+
+### Stopping a Run
+
+Click **Stop** in the Start Here panel, or **Grading with AI → Stop Current AI Run**. Google can't interrupt an answer that's already being processed, so the current one finishes first (usually a few seconds), then the run stops, keeps everything written, and cancels any scheduled background continuation.
+
+### Background Continuation Didn't Resume
+
+**Problem**: A long run said it would continue in the background, but nothing happened
+
+**Solutions**:
+1. Open **Start Here**: the banner shows the latest status (running, continuing, paused, or stopped) and why
+2. Check **Extensions → Apps Script → Executions** for a `continueGradeAnswers` or `continueWriteFeedback` run and its error
+3. If you declined the "run when you're not present" permission, just run the step again: finished cells are skipped
+4. Continuation stops on its own after about 20 background runs, or if a run makes no progress, so it can't loop forever
 
 ### Data Mismatch
 
@@ -519,22 +496,36 @@ When you first use any AI grading feature, you'll need to authorize the script a
 To use different Claude models:
 
 1. **Update Settings Sheet**
-   - CLAUDE_GRADING_MODEL: `claude-3-sonnet-20240229` (more capable, higher cost)
-   - CLAUDE_COMMENTING_MODEL: `claude-3-opus-20240229` (most capable, highest cost)
+   - CLAUDE_GRADING_MODEL: the model that assigns grades
+   - CLAUDE_COMMENTING_MODEL: the model that writes feedback (you can use a cheaper model here than for grading, or vice versa)
 
-2. **Available Models**
-   - `claude-3-haiku-20240307` - Fast & economical (recommended)
-   - `claude-3-sonnet-20240229` - Balanced performance
-   - `claude-3-opus-20240229` - Highest quality
-   - Check [Anthropic docs](https://docs.anthropic.com/claude/docs/models-overview) for latest models
+   The Settings sheet always wins over the defaults in the code, so a spreadsheet copied before an update keeps its old model until you change these cells.
 
-### Custom Sleep Delays
+2. **Available Models** (prices per million input / output tokens)
 
-To adjust API call spacing (in GradingTools.gs):
-- Line 77: `Utilities.sleep(1000);` - Delay after grading (1 second)
-- Line 255: `Utilities.sleep(1500);` - Delay after rubric grading (1.5 seconds)
+   | Model ID | Price | Notes |
+   |----------|-------|-------|
+   | `claude-sonnet-5` | $2 / $10 | Balanced quality and cost (default). Thinks before answering |
+   | `claude-opus-5` | $5 / $25 | Highest quality. Thinks before answering |
+   | `claude-haiku-4-5-20251001` | $1 / $5 | Fastest and cheapest; no thinking step. Fine for short, clear-cut answers |
 
-Increase these values if experiencing rate limiting.
+   Check [Anthropic's models overview](https://docs.claude.com/en/docs/about-claude/models/overview) for the latest models. Older model IDs such as `claude-3-haiku-20240307` have been retired and will return an error; if your Settings sheet still has one, replace it.
+
+   A good workflow is to try a new model on a handful of answers you've already graded by hand, and compare before switching a whole class.
+
+3. **Effort (Opus and Sonnet only)**
+
+   `CLAUDE_EFFORT` sets how much the model thinks before answering: `low`, `medium`, `high` (the default when blank), `xhigh`, or `max`. Lower levels are faster and cheaper, and both Sonnet 5 and Opus 5 hold up well at `medium`; start there if a full run takes too long or costs more than you'd like, and compare against a few hand-graded answers. Higher effort means slower calls, so fewer answers get graded per 5-minute run (just run it again to continue). Haiku ignores this setting.
+
+4. **Declined requests**
+
+   Claude's safety filters occasionally decline benign requests (Opus 5 is the most likely to, for example on some life-sciences content). On Opus 5, the script automatically asks Anthropic to re-run a declined request on its recommended fallback model. If a request is still declined, on any model, that cell is left empty, counted under "Errors/Skipped" in the summary, and the reason is written to the execution log, so you can grade that answer by hand.
+
+### Rate Limits and Retries
+
+Grading runs one request at a time, so rate limits are rare. If Claude returns a rate-limit (429), overload (529), or temporary server error (5xx), or the network drops, the script waits and retries automatically (5s, 15s, 30s, or the wait time the API asks for). To change the waits, edit `CLAUDE_RETRY_DELAYS_MS` in `Constants.gs`.
+
+AI operations also stop cleanly after 5 minutes to stay within Google's 6-minute execution limit. Just run the operation again — cells that already have a grade or comment are skipped.
 
 ---
 

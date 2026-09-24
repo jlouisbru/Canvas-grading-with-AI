@@ -1,76 +1,44 @@
 // AIOperationContext.gs
 
 /**
- * Initializes common context for AI operations (API keys, sheet objects, config, header info, answer/rubric data).
- * @param {GoogleAppsScript.Spreadsheet.Sheet} mainSheet The main data sheet.
- * @param {boolean} needsRubricData Whether to parse rubric data specifically from "Answers" sheet.
- * @param {boolean} needsAnswerKeyMap Whether to parse overall answer key data from "Answers" sheet.
- * @returns {object|null} Context object or null on critical failure.
+ * Gathers everything an AI grading or feedback run needs, checking prerequisites in the order
+ * a new user would hit them. Explains what to do next and returns null if something is missing.
+ * Works with or without a UI (menu runs and background continuations).
+ * @returns {{mainSheet: GoogleAppsScript.Spreadsheet.Sheet, claudeApiKey: string, headerValues: string[],
+ *            questionColumnsMap: Map<string, object>, questions: object}|null}
  * @private
  */
-function initializeAIOperationContext_(mainSheet, needsRubricData, needsAnswerKeyMap) {
-  const ui = SpreadsheetApp.getUi();
+function initializeAIOperationContext_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const answersSheet = spreadsheet.getSheetByName("Answers");
+  const mainSheet = spreadsheet.getSheetByName(MAIN_SHEET_NAME);
+  if (!mainSheet || mainSheet.getLastRow() < 2) {
+    notify_("No Student Answers Yet", `There are no student answers on "${MAIN_SHEET_NAME}" yet.\n\nRun "1. Fetch from Canvas" first.`);
+    return null;
+  }
 
-  if (!answersSheet && (needsRubricData || needsAnswerKeyMap)) {
-    ui.alert("Error: 'Answers' Sheet Missing", "The 'Answers' sheet was not found. Please run 'Fetch Question Prompts to \"Answers\" Sheet' first.", ui.ButtonSet.OK);
+  const questions = parseAnswersSheet_();
+  if (!questions || Object.keys(questions).length === 0) {
+    notify_("No Questions Yet", `The "${ANSWERS_SHEET_NAME}" sheet has no questions yet.\n\nRun "1. Fetch from Canvas" first.`);
+    return null;
+  }
+  const hasAnyKeyOrRubric = Object.values(questions).some(q => q.key || q.criteria.length > 0);
+  if (!hasAnyKeyOrRubric) {
+    notify_("No Answer Keys Yet", `Add an answer key for each question in Column C of the "${ANSWERS_SHEET_NAME}" sheet (and rubric criteria in Columns E+ if you want rubric grading).\n\nTip: "2. Draft Answer Keys with AI" writes drafts for you to review.`);
+    return null;
+  }
+
+  const headerValues = getHeaderValues_(mainSheet);
+  const qidsFromHeader = headerValues
+    .map(h => (String(h).match(/\[Q ID: (\d+)\]/) || [])[1])
+    .filter(Boolean);
+  const headerInfo = parseMainSheetHeader_(mainSheet, qidsFromHeader);
+  if (!headerInfo || headerInfo.questionColumnsMap.size === 0) {
+    notify_("Main Sheet Layout Not Recognized", `Could not find the question columns on "${MAIN_SHEET_NAME}".\n\nRun "1. Fetch from Canvas" to rebuild it.`);
     return null;
   }
 
   const claudeApiKey = getClaudeApiKey_();
   if (!claudeApiKey) return null;
 
-  // Derive QIDs directly from the existing sheet header — no Canvas API call needed.
-  const qidsFromHeader = getHeaderValues_(mainSheet)
-    .map(h => (String(h).match(/\[Q ID: (\d+)\]/) || [])[1])
-    .filter(Boolean);
-  const mainSheetHeaderInfo = parseMainSheetHeader_(mainSheet, qidsFromHeader);
-
-  if (!mainSheetHeaderInfo) {
-    ui.alert("Error: Main Sheet Header Invalid", "Could not parse main sheet header. Ensure Row 1 is correct (Student Name, Canvas User ID, QID columns). Run 'Fetch Essay Quiz Responses' to rebuild if needed.", ui.ButtonSet.OK);
-    return null;
-  }
-  if (mainSheetHeaderInfo.questionColumnsMap.size === 0) {
-      Logger.log("Warning: No question columns (e.g., '[Q ID: xxx] Question Title') were parsed from the main sheet header. AI operations may not find questions to process.");
-  }
-
-  let rubricDataMap = null;
-  if (needsRubricData && answersSheet) {
-    rubricDataMap = parseRubricDataFromAnswersSheet_();
-    if (!rubricDataMap) {
-        Logger.log("Rubric data parsing from 'Answers' sheet resulted in null (likely 'Answers' sheet missing error handled by parseRubricDataFromAnswersSheet_).");
-        // Alert is handled by parseRubricDataFromAnswersSheet_ if sheet is missing
-    } else if (Object.keys(rubricDataMap).length === 0) {
-        ui.alert("No Rubric Data Found", "No valid rubric data (Max Points in Col D, Criteria in Cols E+) found in the 'Answers' sheet. Rubric-based AI operations cannot proceed.", ui.ButtonSet.OK);
-        return null; // Fatal for rubric operations if no data at all
-    }
-  }
-
-  let answerKeyDataMap = null;
-  if (needsAnswerKeyMap && answersSheet) {
-      answerKeyDataMap = {};
-      const answersSheetValues = answersSheet.getDataRange().getValues();
-      for (let i = 1; i < answersSheetValues.length; i++) {
-          const row = answersSheetValues[i];
-          const qIdTitleCell = row[0] ? String(row[0]) : "";
-          const promptText = row[1] ? String(row[1]) : "";
-          const keyText = row[2] ? String(row[2]) : "";
-          const qIdMatch = qIdTitleCell.match(/\[Q ID: (\d+)\]/);
-          if (qIdMatch && qIdMatch[1] && keyText.trim()) {
-              answerKeyDataMap[qIdMatch[1]] = { prompt: promptText.trim(), key: keyText.trim() };
-          } else if (qIdTitleCell.trim() && i > 0 && !keyText.trim() && qIdMatch?.[1]) {
-              Logger.log(`Skipping QID ${qIdMatch[1]} in 'Answers' for AI Overall Key: missing key in Col C.`);
-          }
-      }
-      if (Object.keys(answerKeyDataMap).length === 0) {
-          ui.alert("No Answer Keys Found", "No valid overall answer keys found in Column C of 'Answers' sheet. AI operations requiring answer keys cannot proceed.", ui.ButtonSet.OK);
-          return null; // Fatal if answer keys are essential
-      }
-  }
-
-  return {
-    ui, spreadsheet, mainSheet, answersSheet, claudeApiKey,
-    mainSheetHeaderInfo, rubricDataMap, answerKeyDataMap
-  };
+  return { mainSheet, claudeApiKey, headerValues, questionColumnsMap: headerInfo.questionColumnsMap, questions };
 }
