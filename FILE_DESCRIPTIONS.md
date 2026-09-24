@@ -145,7 +145,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 
 ---
 
-### Sidebar.gs + Sidebar.html
+### StartHerePanel.gs + Sidebar.html
 - `showStartHerePanel()` - Menu item: opens the Start Here panel
 - `getStartHereStatus()` - Called by the panel: setup state, progress, run status, current settings (sheet reads only, no network)
 - `showSheet(sheetName)` - Called by the panel: switches to Main Sheet, Answers, or Settings
@@ -202,7 +202,7 @@ SheetProcessingHelpers.gs → AIOperationContext.gs
   ↓
 FetchData.gs, FetchResponses.gs, AnswerKeyDrafts.gs, GradingTools.gs, UploadData.gs, SetupCheck.gs
   ↓
-SheetUtilities.gs (menu), Sidebar.gs + Sidebar.html (Start Here panel)
+SheetUtilities.gs (menu), StartHerePanel.gs + Sidebar.html (Start Here panel)
 ```
 
 Apps Script loads all files into one global scope, in no guaranteed order. Top-level `const` values must therefore be literals: never build one from another file's constant at load time (that's why `AI_OPERATIONS` reads settings and defaults inside functions).

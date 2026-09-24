@@ -1,4 +1,4 @@
-// Sidebar.gs
+// StartHerePanel.gs (the HTML lives in Sidebar.html; Apps Script forbids a .gs and .html file with the same name)
 
 /** Menu action: opens the Start Here panel. */
 function showStartHerePanel() {

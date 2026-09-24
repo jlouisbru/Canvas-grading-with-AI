@@ -38,7 +38,7 @@ These files work together to provide AI-powered grading and feedback for Canvas 
 |------|-------|---------|
 | [SheetUtilities.gs](SheetUtilities.gs) | ~200 | Menu, Settings sheet and dropdowns, Clear tools |
 | [SetupCheck.gs](SetupCheck.gs) | ~200 | Check Setup and the progress checklist |
-| [Sidebar.gs](Sidebar.gs) + [Sidebar.html](Sidebar.html) | ~50 + ~230 | Start Here panel |
+| [StartHerePanel.gs](StartHerePanel.gs) + [Sidebar.html](Sidebar.html) | ~50 + ~230 | Start Here panel |
 | [AIHighlights.gs](AIHighlights.gs) | ~95 | Highlighting AI-written cells until reviewed |
 | [AutoContinue.gs](AutoContinue.gs) | ~80 | Background continuation of long runs |
 | [SheetProcessingHelpers.gs](SheetProcessingHelpers.gs) | ~250 | Sheet parsing and writing |

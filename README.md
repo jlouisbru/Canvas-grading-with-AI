@@ -195,7 +195,7 @@ Canvas-grading-with-AI/
     ├── README.md                   # Source code overview
     ├── appsscript.json             # Apps Script manifest (for clasp push)
     ├── Sidebar.html                # Start Here panel (UI)
-    ├── Sidebar.gs                  # Start Here panel (server side)
+    ├── StartHerePanel.gs           # Start Here panel (server side)
     ├── SetupCheck.gs               # Check Setup and progress checklist
     ├── AnswerKeyDrafts.gs          # AI-drafted answer keys and rubrics
     ├── AIHighlights.gs             # Highlighting AI-written cells for review
