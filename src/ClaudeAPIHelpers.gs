@@ -84,6 +84,30 @@ const GRADE_OUTPUT_FORMAT = {
 };
 
 /**
+ * JSON schema for AI-drafted answer keys: the key text plus optional rubric criteria.
+ */
+const ANSWER_KEY_DRAFT_FORMAT = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      answer_key: { type: "string" },
+      criteria: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { description: { type: "string" }, points: { type: "number" } },
+          required: ["description", "points"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["answer_key", "criteria"],
+    additionalProperties: false
+  }
+};
+
+/**
  * Reads the optional CLAUDE_EFFORT setting (low, medium, high, xhigh, max).
  * @returns {string|null} A valid effort level, or null to use the API default (high).
  * @private
@@ -97,6 +121,19 @@ function getEffortSetting_() {
 }
 
 /**
+ * Returns a copy of a payload that requests a JSON response matching the given format,
+ * if the model supports structured outputs. Otherwise returns the payload unchanged.
+ * @param {object} payload The Messages API payload.
+ * @param {object} format An output_config.format object.
+ * @returns {object} The payload to send.
+ * @private
+ */
+function withOutputFormat_(payload, format) {
+  if (!STRUCTURED_OUTPUT_MODEL_PATTERN.test(String(payload.model))) return payload;
+  return { ...payload, output_config: { ...(payload.output_config || {}), format } };
+}
+
+/**
  * Returns a copy of a grading payload that requests a structured {"grade": number} response,
  * if the model supports structured outputs. Otherwise returns the payload unchanged.
  * @param {object} payload The Messages API payload.
@@ -104,8 +141,24 @@ function getEffortSetting_() {
  * @private
  */
 function withGradeOutputFormat_(payload) {
-  if (!STRUCTURED_OUTPUT_MODEL_PATTERN.test(String(payload.model))) return payload;
-  return { ...payload, output_config: { ...(payload.output_config || {}), format: GRADE_OUTPUT_FORMAT } };
+  return withOutputFormat_(payload, GRADE_OUTPUT_FORMAT);
+}
+
+/**
+ * Parses a JSON object from response text, tolerating a surrounding ```json code fence
+ * (models without structured outputs sometimes add one).
+ * @param {string} text The response text.
+ * @returns {object|null} The parsed object, or null if the text isn't valid JSON.
+ * @private
+ */
+function parseJsonResponse_(text) {
+  const unfenced = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(unfenced);
+  } catch (e) {
+    Logger.log(`Response was not valid JSON: ${e.message}`);
+    return null;
+  }
 }
 
 /**
@@ -483,4 +536,42 @@ ${STUDENT_ANSWER_SAFETY_INSTRUCTION}`;
   const { success, text, rawResponse, errorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeRubricComment");
   if (!success && errorMsg) Logger.log(errorMsg + (rawResponse ? ` Raw Response: ${rawResponse.substring(0,100)}` : ""));
   return { comment: (success && text) ? text : null, rawResponse, errorMsg, isAuthError: isAuthError || false };
+}
+
+/**
+ * Asks Claude to draft an answer key (and optionally rubric criteria) for one question.
+ * Only the question itself is sent — no student data.
+ * @param {string} questionTitle The question title.
+ * @param {string} questionPrompt The full question text.
+ * @param {number} maxPoints Points possible (0 if unknown).
+ * @param {boolean} includeRubric Whether to draft rubric criteria too.
+ * @param {string} apiKey Claude API Key.
+ * @param {string} modelName The Claude model to use.
+ * @returns {{answerKey: string|null, criteria: Array<{description: string, points: number}>, errorMsg: string, isAuthError: boolean}}
+ * @private
+ */
+function callClaudeAPIForAnswerKeyDraft_(questionTitle, questionPrompt, maxPoints, includeRubric, apiKey, modelName) {
+  let system = `You help a university instructor prepare grading materials for an essay question.
+Write an answer key: the key concepts a complete, correct answer must include, as short bullet points (one distinct concept per bullet, about 150 words at most). An AI grader will estimate what fraction of these concepts a student's answer covers, so each concept must be specific and checkable. Do not write a model essay.`;
+  if (includeRubric) {
+    system += `\nAlso write rubric criteria: up to ${MAX_RUBRIC_CRITERIA} specific, independently checkable requirements, each scored all-or-nothing. Their points must add up to exactly ${maxPoints}. Use fewer criteria when the question is worth few points.`;
+  } else {
+    system += `\nReturn an empty criteria list.`;
+  }
+  system += `\nRespond with JSON only: {"answer_key": "...", "criteria": [{"description": "...", "points": 1}]}.`;
+  const user = `Question title: ${questionTitle}\nQuestion: ${questionPrompt}\nPoints possible: ${maxPoints || "unknown"}`;
+  const payload = withOutputFormat_({ model: modelName, max_tokens: 2000, system, messages: [{ role: "user", content: user }] }, ANSWER_KEY_DRAFT_FORMAT);
+
+  const { success, text, errorMsg, isAuthError } = callClaudeAPIMessages_(payload, apiKey, "ClaudeAnswerKeyDraft");
+  if (!success || !text) return { answerKey: null, criteria: [], errorMsg, isAuthError };
+
+  const parsed = parseJsonResponse_(text);
+  const answerKey = typeof parsed?.answer_key === 'string' ? parsed.answer_key.trim() : "";
+  if (!answerKey) return { answerKey: null, criteria: [], errorMsg: `Draft response had no answer key: ${text.substring(0, 200)}`, isAuthError: false };
+  const criteria = Array.isArray(parsed.criteria)
+    ? parsed.criteria
+        .filter(c => typeof c?.description === 'string' && c.description.trim() && typeof c.points === 'number' && c.points > 0)
+        .map(c => ({ description: c.description.trim(), points: c.points }))
+    : [];
+  return { answerKey, criteria, errorMsg: "", isAuthError: false };
 }

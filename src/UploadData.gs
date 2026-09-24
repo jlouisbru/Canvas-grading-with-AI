@@ -11,12 +11,12 @@ function uploadEssayGradesToCanvas() {
     const apiKey = getCanvasApiKey_();
     if (!apiKey) return;
 
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    Logger.log(`Attempting to upload grades and comments from sheet: "${sheet.getName()}"`);
-    if (["Answers", "Settings"].includes(sheet.getName())) {
-      ui.alert("Upload Warning", "Please select the main data sheet for uploading.", ui.ButtonSet.OK);
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(MAIN_SHEET_NAME);
+    if (!sheet) {
+      ui.alert("Nothing to Upload", `There's no "${MAIN_SHEET_NAME}" yet. Run "1. Fetch from Canvas" first.`, ui.ButtonSet.OK);
       return;
     }
+    Logger.log(`Attempting to upload grades and comments from sheet: "${sheet.getName()}"`);
     const allData = sheet.getDataRange().getValues();
 
     if (allData.length < 2) {
@@ -57,10 +57,14 @@ function uploadEssayGradesToCanvas() {
     }
     const quizId = quizResult.quizId;
 
+    const unreviewedCount = countAIMarks_(sheet.getRange(2, 1, studentDataRows.length, headerRow.length));
+    const unreviewedNote = unreviewedCount > 0
+      ? `\n\n⚠ ${unreviewedCount} AI-written grade/comment cell(s) are still highlighted as not reviewed. They will be uploaded as they are.`
+      : "";
     const confirm = ui.alert('Confirm Grade & Comment Upload',
       `Upload grades AND comments for ${studentDataRows.length} students from sheet "${sheet.getName()}"?\n` +
       `Existing essay question grades AND comments in Canvas will be OVERWRITTEN.\n` +
-      `Only non-blank, numeric grades and non-blank comments are uploaded.`,
+      `Only non-blank, numeric grades and non-blank comments are uploaded.${unreviewedNote}`,
       ui.ButtonSet.OK_CANCEL);
     if (confirm !== ui.Button.OK) {
       ui.alert('Upload cancelled.');

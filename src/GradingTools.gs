@@ -1,506 +1,305 @@
 // GradingTools.gs
 
+const GENEROSITY_LABELS = { 1: "Very Strict", 2: "Strict", 3: "Normal", 4: "Generous", 5: "Very Generous" };
+
 /**
- * Prompts the user for a grading generosity level.
- * @param {GoogleAppsScript.Base.Ui} ui The Spreadsheet UI service.
- * @returns {number|null} The generosity level (1-5) or null if cancelled/invalid.
+ * The two AI operations. Each question is handled automatically: questions with rubric
+ * criteria in the "Answers" sheet use rubric grading/feedback, the others use the answer key.
+ * Only strings live here: settings and other files' constants are read at call time.
+ */
+const AI_OPERATIONS = {
+  grade: {
+    title: "Grading",
+    resultName: "grade",
+    continueHandler: "continueGradeAnswers",
+    plan: context => planAITasks_(context, "grade"),
+    readSettings: () => ({
+      model: getSetting_("CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL),
+      generosity: getGenerositySetting_()
+    }),
+    process: (task, context, settings) => gradeOneAnswer_(task, context, settings)
+  },
+  feedback: {
+    title: "Feedback",
+    resultName: "comment",
+    continueHandler: "continueWriteFeedback",
+    plan: context => planAITasks_(context, "feedback"),
+    readSettings: () => ({
+      model: getSetting_("CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL),
+      includeAnswerKey: getYesNoSetting_("INCLUDE_ANSWER_KEY_IN_FEEDBACK", false)
+    }),
+    process: (task, context, settings) => writeOneComment_(task, context, settings)
+  }
+};
+
+/** Menu action: grades every answer that doesn't have a grade yet. */
+function gradeAnswers() {
+  runAIOperation_("grade", false);
+}
+
+/** Menu action: writes feedback for every answer that has no comment and didn't get full marks. */
+function writeFeedback() {
+  runAIOperation_("feedback", false);
+}
+
+/** Background continuation of gradeAnswers (called by a time-based trigger). */
+function continueGradeAnswers() {
+  runAIOperation_("grade", true);
+}
+
+/** Background continuation of writeFeedback (called by a time-based trigger). */
+function continueWriteFeedback() {
+  runAIOperation_("feedback", true);
+}
+
+/**
+ * Returns true if a cell value is empty.
+ * @param {*} value A cell value.
+ * @returns {boolean}
  * @private
  */
-function getGradingGenerosityLevel_(ui) {
-  const promptTitle = "Set Grading Generosity";
-  const promptMessage = "Enter grading generosity (1-5):\n\n1: Very Strict   — full credit requires ≥90% of key concepts\n2: Strict        — full credit requires ≥75% of key concepts\n3: Normal        — full credit requires ≥60% of key concepts (default)\n4: Generous      — full credit requires ≥40% of key concepts\n5: Very Generous — full credit for any answer covering ≥10% of concepts\n\nEnter a number between 1 and 5:";
-  const response = ui.prompt(promptTitle, promptMessage, ui.ButtonSet.OK_CANCEL);
+function isBlankCell_(value) {
+  return value === null || value === undefined || String(value).trim() === "";
+}
 
-  if (response.getSelectedButton() === ui.Button.OK) {
-    const levelStr = response.getResponseText().trim();
-    const level = parseInt(levelStr, 10);
-    if (!isNaN(level) && level >= 1 && level <= 5) {
-      return level;
-    } else {
-      ui.alert("Invalid Input", "Generosity level must be a number between 1 and 5. Defaulting to 3 (Normal).", ui.ButtonSet.OK);
-      return 3; // Default to normal if input is bad
+/**
+ * Lists the cells an operation needs to fill, plus questions that can't be processed.
+ * @param {object} context From initializeAIOperationContext_().
+ * @param {"grade"|"feedback"} kind Which operation to plan.
+ * @returns {{tasks: object[], skipped: string[]}}
+ * @private
+ */
+function planAITasks_(context, kind) {
+  const { mainSheet, questionColumnsMap, questions, headerValues } = context;
+  const rows = mainSheet.getRange(2, 1, mainSheet.getLastRow() - 1, mainSheet.getLastColumn()).getValues();
+  const tasks = [];
+  const skipped = [];
+
+  for (const [qId, cols] of questionColumnsMap) {
+    const question = questions[qId];
+    const useRubric = Boolean(question && question.criteria.length > 0);
+    if (!question || (!useRubric && !question.key)) {
+      skipped.push(`QID ${qId}: no answer key or rubric yet`);
+      continue;
     }
+    const points = useRubric ? (question.maxPoints || cols.points) : (cols.points || question.maxPoints);
+    if (!(points > 0)) {
+      skipped.push(`QID ${qId}: points possible is missing`);
+      continue;
+    }
+    const questionText = question.prompt || headerValues[cols.answerColIndex];
+
+    rows.forEach((row, i) => {
+      const answer = row[cols.answerColIndex];
+      if (isBlankCell_(answer)) return;
+      const gradeCell = row[cols.gradeColIndex];
+      const targetColIndex = kind === "grade" ? cols.gradeColIndex : cols.commentColIndex;
+      if (!isBlankCell_(row[targetColIndex])) return;
+
+      const grade = isBlankCell_(gradeCell) ? null : parseFloat(String(gradeCell));
+      if (kind === "feedback" && grade !== null && !isNaN(grade) && grade >= points) return; // Full marks: no feedback needed.
+
+      tasks.push({
+        qId, useRubric, points, questionText,
+        answer: String(answer),
+        grade: (grade === null || isNaN(grade)) ? null : grade,
+        sheetRow: i + 2,
+        sheetColumn: targetColIndex + 1
+      });
+    });
+  }
+  return { tasks, skipped };
+}
+
+/**
+ * Grades one answer with Claude.
+ * @returns {{value: number|null, isAuthError: boolean, errorMsg: string}}
+ * @private
+ */
+function gradeOneAnswer_(task, context, settings) {
+  const question = context.questions[task.qId];
+  const result = task.useRubric
+    ? callClaudeAPIForRubricGrade_(task.questionText, task.answer, task.points, question.criteria, context.claudeApiKey, settings.model, settings.generosity)
+    : callClaudeAPIForGrading_(task.questionText, question.key, task.answer, task.points, context.claudeApiKey, settings.model, settings.generosity);
+  return { value: result.grade === null ? null : Number(result.grade), isAuthError: result.isAuthError, errorMsg: result.errorMsg };
+}
+
+/**
+ * Writes feedback for one answer with Claude.
+ * @returns {{value: string|null, isAuthError: boolean, errorMsg: string}}
+ * @private
+ */
+function writeOneComment_(task, context, settings) {
+  const question = context.questions[task.qId];
+  const includeAnswerKey = settings.includeAnswerKey && Boolean(question.key);
+  const result = task.useRubric
+    ? callClaudeAPIForRubricComment_(task.questionText, task.answer, question.key || "(No overall answer key was provided; use the rubric criteria.)",
+        task.grade, task.points, question.criteria, context.claudeApiKey, settings.model, includeAnswerKey)
+    : callClaudeAPIForCommenting_(task.questionText, question.key, task.answer, task.grade, task.points, context.claudeApiKey, settings.model, includeAnswerKey);
+  return { value: result.comment ? result.comment.trim() : null, isAuthError: result.isAuthError, errorMsg: result.errorMsg };
+}
+
+/**
+ * Asks the user to confirm a run, showing what will happen and anything worth knowing first.
+ * @returns {boolean} True to proceed.
+ * @private
+ */
+function confirmAIRun_(operationName, tasks, skipped, settings) {
+  const questionCount = new Set(tasks.map(t => t.qId)).size;
+  const lines = [];
+  if (operationName === "grade") {
+    lines.push(`Grade ${tasks.length} answer(s) across ${questionCount} question(s) using ${settings.model}, generosity ${settings.generosity} (${GENEROSITY_LABELS[settings.generosity]})?`);
+    lines.push("", "Only empty grade cells are filled.");
   } else {
-    ui.alert("Cancelled", "Grading generosity not set. Operation cancelled.", ui.ButtonSet.OK);
-    return null; // User cancelled
+    lines.push(`Write feedback for ${tasks.length} answer(s) across ${questionCount} question(s) using ${settings.model}?`);
+    lines.push("", `Answers with full marks are skipped. Include answer key in feedback: ${settings.includeAnswerKey ? "Yes" : "No"}.`);
   }
+  lines.push("AI-written cells are highlighted until you review them.");
+  if (skipped.length > 0) lines.push("", "Skipped:", ...skipped.map(s => `• ${s}`));
+  const unreviewedDrafts = countUnreviewedAnswerKeyDrafts_();
+  if (unreviewedDrafts > 0) {
+    lines.push("", `⚠ ${unreviewedDrafts} question(s) use AI-drafted answer keys or rubrics you haven't reviewed yet (highlighted in the "${ANSWERS_SHEET_NAME}" sheet).`);
+  }
+  return confirm_(`Confirm ${AI_OPERATIONS[operationName].title}`, lines.join("\n"), true);
 }
 
 /**
- * Grades student answers using Claude AI based on an overall answer key, with user-defined generosity.
- * Writes each grade to the sheet immediately after the API call, so partial results
- * are preserved if the operation is interrupted.
- */
-function autoGradeWithClaude() {
-  const ui = SpreadsheetApp.getUi();
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
-  if (!mainSheet) {
-    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
-    return;
-  }
-  const context = initializeAIOperationContext_(mainSheet, false, true); // Needs answerKeyMap
-  if (!context) return;
-
-  const { claudeApiKey, mainSheetHeaderInfo, answerKeyDataMap } = context;
-  if (!answerKeyDataMap || Object.keys(answerKeyDataMap).length === 0) {
-    ui.alert("AI Grading Aborted", "No answer keys loaded from 'Answers' sheet (Column C).", ui.ButtonSet.OK);
-    showToast_('AI Grading Aborted: No keys.', 'Error', 5);
-    return;
-  }
-  if (mainSheet.getLastRow() < 2) { showToast_('No student rows found.', 'Info', 5); return; }
-
-  const generosityLevel = getGradingGenerosityLevel_(ui);
-  if (generosityLevel === null) {
-    showToast_('AI Grading Cancelled.', 'Info', 5);
-    return;
-  }
-  Logger.log(`Using generosity level: ${generosityLevel} for overall key grading.`);
-
-  ui.alert("AI Grading Starting", `The script will attempt to grade answers using Claude AI with generosity level ${generosityLevel}. This may take time.`, ui.ButtonSet.OK);
-  showToast_(`Starting AI Grading (Generosity: ${generosityLevel})...`, 'Processing...', -1);
-
-  const { questionColumnsMap } = mainSheetHeaderInfo;
-  const gradingModel = getSetting_("CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL);
-
-  const lastRow = mainSheet.getLastRow();
-  const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
-  const studentDataValues = dataRange.getValues(); // Read all data once to check existing grades
-  const startTime = Date.now();
-  let timedOut = false;
-  let gradesWritten = 0, errorsEncountered = 0;
-
-  let abortDueToAuthError = false;
-  for (const [qId, qColInfo] of questionColumnsMap) {
-    if (timedOut || abortDueToAuthError) break;
-    const pointsPossible = qColInfo.points;
-    if (!(pointsPossible > 0)) {
-      Logger.log(`Skipping QID ${qId}: points possible is 0 or missing from its Grade column header.`);
-      continue;
-    }
-
-    for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
-      if (abortDueToAuthError) break;
-      const studentRowValues = studentDataValues[i];
-      const sheetRowNumber = i + 2;
-
-      const studentAnswer = studentRowValues[qColInfo.answerColIndex];
-      const currentGrade = studentRowValues[qColInfo.gradeColIndex];
-
-      if (studentAnswer && String(studentAnswer).trim() &&
-          (currentGrade === "" || currentGrade === null || currentGrade === undefined || String(currentGrade).trim() === "")) {
-        const keyData = answerKeyDataMap[qId];
-        if (keyData?.key) {
-          showToast_(`Grading QID ${qId} (Row ${sheetRowNumber}, Gen: ${generosityLevel})...`, 'Processing...', -1);
-          Logger.log(`Grading QID ${qId} for row ${sheetRowNumber}. Points: ${pointsPossible}, Generosity: ${generosityLevel}`);
-          const apiResult = callClaudeAPIForGrading_(keyData.prompt, keyData.key, String(studentAnswer), pointsPossible, claudeApiKey, gradingModel, generosityLevel);
-
-          if (apiResult.isAuthError) {
-            abortDueToAuthError = true;
-            break;
-          }
-
-          if (apiResult.grade !== null) {
-            // Write immediately to the sheet — result is saved even if operation is interrupted later.
-            mainSheet.getRange(sheetRowNumber, qColInfo.gradeColIndex + 1).setValue(parseFloat(apiResult.grade));
-            SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
-            gradesWritten++;
-          } else {
-            Logger.log(`Claude returned invalid grade for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
-            errorsEncountered++;
-          }
-        } else {
-          Logger.log(`No answer key for QID ${qId}. Skipping AI grade for row ${sheetRowNumber}.`);
-        }
-      }
-    }
-  }
-
-  if (timedOut) {
-    showToast_('Time limit reached. Re-run to continue — already-graded cells will be skipped.', 'Paused', 15);
-    ui.alert('Grading Paused', `The 5-minute time limit was reached.\n\nGrades written so far: ${gradesWritten}\n\nRe-run the operation — already-graded cells will be skipped automatically.`, ui.ButtonSet.OK);
-    return;
-  }
-
-  if (abortDueToAuthError) {
-    handleClaudeAuthError_();
-    showToast_('Grading aborted: API key error.', 'Error', 10);
-    ui.alert("Grading Aborted", `The Claude API rejected the key mid-operation.\nGrades written before the error: ${gradesWritten}\n\nSee the previous alert for recovery instructions.`, ui.ButtonSet.OK);
-    return;
-  }
-
-  showToast_('AI Grading Complete!', 'Success', 10);
-  ui.alert("AI Grading Complete", `Grading finished with generosity level ${generosityLevel}.\nGrades written: ${gradesWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
-  Logger.log(`AI Grading Complete. Generosity: ${generosityLevel}, Grades: ${gradesWritten}, Errors: ${errorsEncountered}`);
-}
-
-/**
- * Prompts the user whether to include the answer key in AI-generated feedback.
- * @param {GoogleAppsScript.Base.Ui} ui The Spreadsheet UI service.
- * @param {string} feedbackType For customizing the prompt message (e.g., "overall key", "rubric").
- * @returns {boolean|null} True to include answer key, false to omit, null if cancelled.
+ * Runs Claude on each task until done or the time budget runs out, writing and highlighting results.
+ * @returns {{written: number, errors: number, processed: number, timedOut: boolean, authError: boolean}}
  * @private
  */
-function getIncludeAnswerKeyChoice_(ui, feedbackType = "key-based") {
-  const promptTitle = "Include Answer Key in Feedback?";
-  let promptMessage = `Do you want the AI to include the answer from the "Answers" sheet in the generated feedback comment?\n\n(Feedback will otherwise focus on explaining the student's performance).`;
-  if (feedbackType === "rubric") {
-    promptMessage = `Do you want the AI to start the feedback by stating the "Overall Answer Key" (from Col C of "Answers" sheet)?\n\n(Feedback will otherwise focus on explaining performance against the rubric and key).`;
-  }
+function processAITasks_(operationName, tasks, context, settings, executionStart, statusBase) {
+  const op = AI_OPERATIONS[operationName];
+  const outcome = { written: 0, errors: 0, processed: 0, timedOut: false, authError: false };
 
-  const response = ui.alert(promptTitle, promptMessage, ui.ButtonSet.YES_NO_CANCEL);
+  for (const task of tasks) {
+    if (Date.now() - executionStart > MAX_AI_RUNTIME_MS) { outcome.timedOut = true; break; }
+    showToast_(`${op.title} ${outcome.processed + 1} of ${tasks.length} (QID ${task.qId}, row ${task.sheetRow})…`, "Working…", -1);
 
-  if (response === ui.Button.YES) {
-    return true;
-  } else if (response === ui.Button.NO) {
-    return false;
-  } else { // CANCEL or closed dialog
-    return null;
-  }
-}
+    const result = op.process(task, context, settings);
+    if (result.isAuthError) { outcome.authError = true; break; }
+    outcome.processed++;
 
-
-/**
- * Generates AI feedback comments for student answers based on the overall answer key.
- * Writes each comment to the sheet immediately after the API call.
- */
-function generateAIComments() {
-  const ui = SpreadsheetApp.getUi();
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
-  if (!mainSheet) {
-    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
-    return;
-  }
-  const context = initializeAIOperationContext_(mainSheet, false, true);
-  if (!context) return;
-
-  const { claudeApiKey, mainSheetHeaderInfo, answerKeyDataMap } = context;
-  if (!answerKeyDataMap || Object.keys(answerKeyDataMap).length === 0) {
-    ui.alert("AI Commenting Aborted", "No answer keys loaded from 'Answers' sheet (Column C).", ui.ButtonSet.OK);
-    showToast_('AI Commenting Aborted.', 'Error', 5);
-    return;
-  }
-
-  const includeAnswerKey = getIncludeAnswerKeyChoice_(ui, "key-based");
-  if (includeAnswerKey === null) {
-    showToast_('AI Commenting Cancelled.', 'Info', 5);
-    return;
-  }
-
-  ui.alert("AI Commenting Starting", "The script will generate feedback comments using Claude AI. This may take time.", ui.ButtonSet.OK);
-  showToast_('Starting AI Comment Generation...', 'Processing...', -1);
-
-  const { questionColumnsMap } = mainSheetHeaderInfo;
-  const commentingModel = getSetting_("CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL);
-
-  const lastRow = mainSheet.getLastRow();
-  if (lastRow < 2) { showToast_('No student rows found.', 'Info', 5); return; }
-  const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
-
-  const startTime = Date.now();
-  let timedOut = false;
-  let commentsWritten = 0, errorsEncountered = 0;
-  let abortDueToAuthError = false;
-
-  for (const [qId, qColInfo] of questionColumnsMap) {
-    if (timedOut || abortDueToAuthError) break;
-    const keyData = answerKeyDataMap[qId];
-    if (!keyData?.key) {
-      Logger.log(`No answer key for QID ${qId} in 'Answers' sheet. Skipping this question.`);
-      continue;
+    if (result.value !== null && result.value !== "") {
+      const cell = context.mainSheet.getRange(task.sheetRow, task.sheetColumn);
+      cell.setValue(result.value);
+      markAsAIWritten_(cell);
+      SpreadsheetApp.flush(); // Show each result as soon as it arrives.
+      outcome.written++;
+    } else {
+      Logger.log(`No ${op.resultName} for QID ${task.qId}, row ${task.sheetRow}: ${result.errorMsg}`);
+      outcome.errors++;
     }
-    const pointsPossible = qColInfo.points;
-
-    for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
-      if (abortDueToAuthError) break;
-      const row = studentDataValues[i];
-      const sheetRow = i + 2;
-
-      const studentAnswer   = row[qColInfo.answerColIndex];
-      const studentGradeRaw = row[qColInfo.gradeColIndex];
-      const currentComment  = row[qColInfo.commentColIndex];
-
-      if (!studentAnswer || !String(studentAnswer).trim()) continue;
-      if (currentComment && String(currentComment).trim() !== "") continue;
-
-      const studentGradeStr = String(studentGradeRaw ?? "").trim();
-      const studentGrade = studentGradeStr !== "" ? parseFloat(studentGradeStr) : null;
-      if (studentGrade !== null && !isNaN(studentGrade) && studentGrade >= pointsPossible) {
-        Logger.log(`Skipping comment for QID ${qId}, Row ${sheetRow}: Student received full marks.`);
-        continue;
-      }
-
-      showToast_(`Generating comment for QID ${qId}, row ${sheetRow}...`, 'Processing...', -1);
-      Logger.log(`AI comment for QID ${qId}, row ${sheetRow}. Grade: ${studentGrade !== null ? studentGrade : 'ungraded'}/${pointsPossible}`);
-      const apiResult = callClaudeAPIForCommenting_(
-        keyData.prompt, keyData.key, String(studentAnswer),
-        studentGrade, pointsPossible, claudeApiKey, commentingModel, includeAnswerKey
-      );
-
-      if (apiResult.isAuthError) { abortDueToAuthError = true; break; }
-
-      if (apiResult.comment) {
-        mainSheet.getRange(sheetRow, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
-        SpreadsheetApp.flush();
-        commentsWritten++;
-      } else {
-        Logger.log(`No valid comment for QID ${qId}, row ${sheetRow}. Error: ${apiResult.errorMsg}`);
-        errorsEncountered++;
-      }
-    }
+    saveRunStatus_({ ...statusBase, state: "running", written: statusBase.written + outcome.written, errors: statusBase.errors + outcome.errors,
+      message: `${op.title}: ${tasks.length - outcome.processed} answer(s) to go.` });
   }
-
-  if (timedOut) {
-    showToast_('Time limit reached. Re-run to continue — already-commented cells will be skipped.', 'Paused', 15);
-    ui.alert('Commenting Paused', `The 5-minute time limit was reached.\n\nComments written so far: ${commentsWritten}\n\nRe-run the operation — already-commented cells will be skipped automatically.`, ui.ButtonSet.OK);
-    return;
-  }
-
-  if (abortDueToAuthError) {
-    handleClaudeAuthError_();
-    showToast_('Commenting aborted: API key error.', 'Error', 10);
-    return;
-  }
-
-  showToast_(`AI Comments Done! Written: ${commentsWritten}, Skipped/Errors: ${errorsEncountered}`, 'Success', 10);
-  ui.alert("AI Commenting Complete", `Finished generating comments.\nComments written: ${commentsWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
-  Logger.log(`generateAIComments complete. Written: ${commentsWritten}, Errors: ${errorsEncountered}`);
+  return outcome;
 }
 
 /**
- * Grades student answers using Claude AI and rubric data from the "Answers" sheet.
- * Writes each grade to the sheet immediately after the API call, so partial results
- * are preserved if the operation is interrupted.
+ * Shared driver for grading and feedback. Holds the lock only while working; dialogs are
+ * shown after it's released, so a scheduled continuation is never blocked by an open alert.
+ * @param {"grade"|"feedback"} operationName Which operation to run.
+ * @param {boolean} isContinuation True when called by a background trigger.
+ * @private
  */
-function aiRubricGrade() {
-  const ui = SpreadsheetApp.getUi();
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
-  if (!mainSheet) {
-    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
-    return;
-  }
-  const context = initializeAIOperationContext_(mainSheet, true, false); // Needs rubricDataMap
-  if (!context) return;
-
-  const { claudeApiKey, mainSheetHeaderInfo, rubricDataMap } = context;
-  if (!rubricDataMap || Object.keys(rubricDataMap).length === 0) {
-    return; // Alert handled by initializer
-  }
-  if (mainSheet.getLastRow() < 2) { showToast_('No student rows found.', 'Info', 5); return; }
-
-  const generosityLevel = getGradingGenerosityLevel_(ui);
-  if (generosityLevel === null) {
-    showToast_('AI Rubric Grading Cancelled.', 'Info', 5);
-    return;
-  }
-  Logger.log(`Using generosity level: ${generosityLevel} for rubric grading.`);
-
-  const userResponse = ui.alert("Confirm AI Rubric-Based Grading",
-    `Grade answers using Claude AI and rubrics with generosity level ${generosityLevel}?\nOnly empty grade cells will be filled.`,
-    ui.ButtonSet.YES_NO);
-  if (userResponse !== ui.Button.YES) {
-    ui.alert("AI Rubric Grading Cancelled.", ui.ButtonSet.OK);
-    return;
-  }
-  showToast_(`Starting AI Rubric Grading (Generosity: ${generosityLevel})...`, 'Processing...', -1);
-
-  const { questionColumnsMap } = mainSheetHeaderInfo;
-  const gradingModel = getSetting_("CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL);
-  const mainSheetHeaderValues = getHeaderValues_(mainSheet);
-
-  const lastRow = mainSheet.getLastRow();
-  const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
-  const studentDataValues = dataRange.getValues(); // Read all data once to check existing grades
-  const startTime = Date.now();
-  let timedOut = false;
-  let gradesWritten = 0, errorsEncountered = 0;
-
-  let abortDueToAuthError = false;
-  for (const [qId, qColInfo] of questionColumnsMap) {
-    if (timedOut || abortDueToAuthError) break;
-    const questionText = rubricDataMap[qId]?.prompt || mainSheetHeaderValues[qColInfo.answerColIndex];
-
-    for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
-      if (abortDueToAuthError) break;
-      const studentRowValues = studentDataValues[i];
-      const sheetRowNumber = i + 2;
-
-      const studentAnswer = studentRowValues[qColInfo.answerColIndex];
-      const currentGrade = studentRowValues[qColInfo.gradeColIndex];
-
-      if (studentAnswer && String(studentAnswer).trim() &&
-          (currentGrade === "" || currentGrade === null || currentGrade === undefined || String(currentGrade).trim() === "")) {
-        const rubricInfo = rubricDataMap[qId];
-        if (rubricInfo?.canvasMaxPoints > 0) {
-          showToast_(`AI Rubric Grade: QID ${qId} (Row ${sheetRowNumber}, Gen: ${generosityLevel})...`, 'Processing...', -1);
-          Logger.log(`AI Rubric Grade: QID ${qId}, Row ${sheetRowNumber}. Max Points: ${rubricInfo.canvasMaxPoints}, Generosity: ${generosityLevel}`);
-          const apiResult = callClaudeAPIForRubricGrade_(questionText, String(studentAnswer), rubricInfo.canvasMaxPoints, rubricInfo.criteria, claudeApiKey, gradingModel, generosityLevel);
-
-          if (apiResult.isAuthError) {
-            abortDueToAuthError = true;
-            break;
-          }
-
-          if (apiResult.grade !== null) {
-            // Write immediately to the sheet — result is saved even if operation is interrupted later.
-            mainSheet.getRange(sheetRowNumber, qColInfo.gradeColIndex + 1).setValue(apiResult.grade);
-            SpreadsheetApp.flush(); // Push cell update to the UI right away so the user sees it appear
-            gradesWritten++;
-          } else {
-            Logger.log(`Claude returned invalid rubric grade for QID ${qId}, row ${sheetRowNumber}. Error: ${apiResult.errorMsg}`);
-            errorsEncountered++;
-          }
-        } else if (rubricInfo) {
-          Logger.log(`Skipping AI Rubric Grade for QID ${qId}, row ${sheetRowNumber}: Max points is 0 or not set.`);
-        } else {
-          Logger.log(`No rubric data for QID ${qId}. Skipping AI Rubric Grade for row ${sheetRowNumber}.`);
-        }
-      }
+function runAIOperation_(operationName, isContinuation) {
+  const executionStart = Date.now();
+  const lock = acquireRunLock_();
+  if (!lock) {
+    if (isContinuation) {
+      retryContinuationLater_(operationName);
+    } else {
+      notify_("Already Running", "Another grading or feedback run is in progress. Wait for it to finish (see the Start Here panel), then try again.");
     }
-  }
-
-  if (timedOut) {
-    showToast_('Time limit reached. Re-run to continue — already-graded cells will be skipped.', 'Paused', 15);
-    ui.alert('Rubric Grading Paused', `The 5-minute time limit was reached.\n\nGrades written so far: ${gradesWritten}\n\nRe-run the operation — already-graded cells will be skipped automatically.`, ui.ButtonSet.OK);
     return;
   }
-
-  if (abortDueToAuthError) {
-    handleClaudeAuthError_();
-    showToast_('Rubric grading aborted: API key error.', 'Error', 10);
-    ui.alert("Rubric Grading Aborted", `The Claude API rejected the key mid-operation.\nGrades written before the error: ${gradesWritten}\n\nSee the previous alert for recovery instructions.`, ui.ButtonSet.OK);
-    return;
+  let result;
+  try {
+    result = executeAIRun_(operationName, isContinuation, executionStart);
+  } finally {
+    lock.releaseLock();
   }
-
-  showToast_('AI Rubric Grading Complete!', 'Success', 10);
-  ui.alert("AI Rubric Grading Complete", `Process finished with generosity level ${generosityLevel}.\nGrades written: ${gradesWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
-  Logger.log(`AI Rubric Grading Complete. Generosity: ${generosityLevel}, Grades: ${gradesWritten}, Errors: ${errorsEncountered}`);
+  if (result.authError) handleClaudeAuthError_();
+  if (result.message) notify_(result.message.title, result.message.text);
 }
 
 /**
- * Generates AI rubric-based feedback comments for student answers.
- * Writes each comment to the sheet immediately after the API call.
+ * A background continuation found another run holding the lock. Instead of dropping the chain,
+ * try again in about a minute, up to AUTO_CONTINUE_MAX_LOCK_RETRIES times.
+ * The status record is only updated if it belongs to this operation, so the run that holds
+ * the lock keeps reporting its own progress.
+ * @param {"grade"|"feedback"} operationName The operation that couldn't start.
+ * @private
  */
-function aiRubricComment() {
-  const ui = SpreadsheetApp.getUi();
-  const mainSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main Sheet");
-  if (!mainSheet) {
-    ui.alert("Sheet Not Found", "Could not find a sheet named 'Main Sheet'.", ui.ButtonSet.OK);
-    return;
-  }
-  const context = initializeAIOperationContext_(mainSheet, true, false);
-  if (!context) return;
+function retryContinuationLater_(operationName) {
+  const op = AI_OPERATIONS[operationName];
+  const status = getRunStatus_();
+  const ownsStatus = status?.operation === operationName;
+  const retries = (ownsStatus ? (status.lockRetries || 0) : 0) + 1;
+  const rescheduled = retries <= AUTO_CONTINUE_MAX_LOCK_RETRIES && scheduleContinuation_(op.continueHandler);
+  Logger.log(`${op.title} continuation found another run busy (retry ${retries}); ${rescheduled ? "rescheduled" : "giving up"}.`);
+  if (!ownsStatus) return;
+  saveRunStatus_(rescheduled
+    ? { ...status, state: "scheduled", lockRetries: retries, message: `${op.title} is waiting for another run to finish, then continues automatically.` }
+    : { ...status, state: "paused", message: `${op.title} couldn't continue because another run stayed busy. Run it again to continue.` });
+}
 
-  const { claudeApiKey, mainSheetHeaderInfo, rubricDataMap } = context;
-  if (!rubricDataMap || Object.keys(rubricDataMap).length === 0) return;
+/**
+ * Plans, confirms, and processes one run, then records whether it finished, paused, or will
+ * continue in the background.
+ * @returns {{message: {title: string, text: string}|null, authError: boolean}}
+ * @private
+ */
+function executeAIRun_(operationName, isContinuation, executionStart) {
+  const op = AI_OPERATIONS[operationName];
+  deleteContinuationTriggers_(op.continueHandler);
+  const previous = getRunStatus_();
+  const chain = (isContinuation && previous?.operation === operationName) ? previous : { written: 0, errors: 0, runNumber: 0 };
+  const statusBase = { operation: operationName, runNumber: chain.runNumber + 1, written: chain.written, errors: chain.errors };
 
-  const { questionColumnsMap } = mainSheetHeaderInfo;
-
-  // Fix 8: Pre-loop scan — warn user about questions with rubric criteria but no overallKey.
-  const questionsWithoutKey = [...questionColumnsMap.keys()].filter(qId => {
-    const r = rubricDataMap[qId];
-    return r && r.canvasMaxPoints > 0 && !r.overallKey;
-  });
-  if (questionsWithoutKey.length > 0) {
-    const proceed = ui.alert(
-      'Missing Overall Answer Key',
-      `${questionsWithoutKey.length} question(s) have rubric criteria but no Overall Answer Key (Column C of "Answers" sheet):\n\nQID(s): ${questionsWithoutKey.join(', ')}\n\nThese will be skipped. Continue for the remaining questions?`,
-      ui.ButtonSet.YES_NO
-    );
-    if (proceed !== ui.Button.YES) { showToast_('Cancelled.', 'Info', 5); return; }
-  }
-
-  const includeAnswerKey = getIncludeAnswerKeyChoice_(ui, "rubric");
-  if (includeAnswerKey === null) {
-    showToast_('AI Rubric Commenting Cancelled.', 'Info', 5);
-    return;
+  const context = initializeAIOperationContext_();
+  if (!context) {
+    if (isContinuation) saveRunStatus_({ ...statusBase, state: "stopped", message: `${op.title} stopped: setup problem (see the execution log).` });
+    return { message: null, authError: false };
   }
 
-  ui.alert("AI Rubric Commenting Starting", "The script will generate rubric-based feedback comments using Claude AI. This may take time.", ui.ButtonSet.OK);
-  showToast_('Starting AI Rubric Comment Generation...', 'Processing...', -1);
-
-  const commentingModel = getSetting_("CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL);
-  const mainSheetHeaderValues = getHeaderValues_(mainSheet);
-
-  const lastRow = mainSheet.getLastRow();
-  if (lastRow < 2) { showToast_('No student rows found.', 'Info', 5); return; }
-  const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
-
-  const startTime = Date.now();
-  let timedOut = false;
-  let commentsWritten = 0, errorsEncountered = 0;
-  let abortDueToAuthError = false;
-
-  for (const [qId, qColInfo] of questionColumnsMap) {
-    if (timedOut || abortDueToAuthError) break;
-    const rubricInfo = rubricDataMap[qId];
-    const questionText = rubricInfo?.prompt || mainSheetHeaderValues[qColInfo.answerColIndex];
-
-    if (!rubricInfo || rubricInfo.canvasMaxPoints <= 0) {
-      Logger.log(`No rubric data or valid max points for QID ${qId}. Skipping this question.`);
-      continue;
-    }
-    if (!rubricInfo.overallKey) {
-      Logger.log(`No overall answer key (Col C) for QID ${qId} in 'Answers' sheet. Skipping this question.`);
-      continue;
-    }
-
-    for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
-      if (abortDueToAuthError) break;
-      const row = studentDataValues[i];
-      const sheetRow = i + 2;
-
-      const studentAnswer   = row[qColInfo.answerColIndex];
-      const studentGradeRaw = row[qColInfo.gradeColIndex];
-      const currentComment  = row[qColInfo.commentColIndex];
-
-      if (!studentAnswer || !String(studentAnswer).trim()) continue;
-      if (currentComment && String(currentComment).trim() !== "") continue;
-
-      const studentGradeStr = String(studentGradeRaw ?? "").trim();
-      const studentGrade = studentGradeStr !== "" ? parseFloat(studentGradeStr) : null;
-      if (studentGrade !== null && !isNaN(studentGrade) && studentGrade >= rubricInfo.canvasMaxPoints) {
-        Logger.log(`Skipping comment for QID ${qId}, Row ${sheetRow}: Student received full marks.`);
-        continue;
-      }
-
-      showToast_(`AI Rubric Comment: QID ${qId} for row ${sheetRow}...`, 'Processing...', -1);
-      Logger.log(`AI rubric comment for QID ${qId}, row ${sheetRow}. Grade: ${studentGrade !== null ? studentGrade : 'ungraded'}/${rubricInfo.canvasMaxPoints}`);
-      const apiResult = callClaudeAPIForRubricComment_(
-        questionText, String(studentAnswer), rubricInfo.overallKey,
-        studentGrade, rubricInfo.canvasMaxPoints, rubricInfo.criteria,
-        claudeApiKey, commentingModel, includeAnswerKey
-      );
-
-      if (apiResult.isAuthError) { abortDueToAuthError = true; break; }
-
-      if (apiResult.comment) {
-        mainSheet.getRange(sheetRow, qColInfo.commentColIndex + 1).setValue(apiResult.comment.trim());
-        SpreadsheetApp.flush();
-        commentsWritten++;
-      } else {
-        Logger.log(`No valid rubric comment for QID ${qId}, row ${sheetRow}. Error: ${apiResult.errorMsg}`);
-        errorsEncountered++;
-      }
-    }
+  const settings = op.readSettings();
+  const { tasks, skipped } = op.plan(context);
+  const skippedNote = skipped.length ? `\n\nSkipped:\n${skipped.map(s => `• ${s}`).join("\n")}` : "";
+  if (tasks.length === 0) {
+    const doneText = operationName === "grade" ? "Every answer already has a grade." : "Every answer that needs feedback already has a comment.";
+    saveRunStatus_({ ...statusBase, state: "done", message: `${op.title} complete. ${doneText}` });
+    return { message: { title: `${op.title} Complete`, text: doneText + skippedNote }, authError: false };
+  }
+  if (!isContinuation && !confirmAIRun_(operationName, tasks, skipped, settings)) {
+    showToast_("Cancelled.", op.title, 5);
+    return { message: null, authError: false };
   }
 
-  if (timedOut) {
-    showToast_('Time limit reached. Re-run to continue — already-commented cells will be skipped.', 'Paused', 15);
-    ui.alert('Rubric Commenting Paused', `The 5-minute time limit was reached.\n\nComments written so far: ${commentsWritten}\n\nRe-run the operation — already-commented cells will be skipped automatically.`, ui.ButtonSet.OK);
-    return;
+  const outcome = processAITasks_(operationName, tasks, context, settings, executionStart, statusBase);
+  const totals = { ...statusBase, written: statusBase.written + outcome.written, errors: statusBase.errors + outcome.errors };
+  const errorNote = totals.errors > 0 ? `\nCouldn't complete: ${totals.errors} (details in Extensions → Apps Script → Executions).` : "";
+
+  if (outcome.authError) {
+    saveRunStatus_({ ...totals, state: "stopped", message: `${op.title} stopped: the Claude API key was rejected.` });
+    return { message: null, authError: true };
+  }
+  if (!outcome.timedOut) {
+    saveRunStatus_({ ...totals, state: "done", message: `${op.title} complete: ${totals.written} written.` });
+    showToast_(`${op.title} complete: ${totals.written} written.`, "Done", 10);
+    return { message: { title: `${op.title} Complete`, text: `Written: ${totals.written}. AI-written cells are highlighted until you review them.${errorNote}` }, authError: false };
   }
 
-  if (abortDueToAuthError) {
-    handleClaudeAuthError_();
-    showToast_('Rubric commenting aborted: API key error.', 'Error', 10);
-    return;
+  const remaining = tasks.length - outcome.processed;
+  const canContinue = outcome.written > 0 && statusBase.runNumber < AUTO_CONTINUE_MAX_RUNS && scheduleContinuation_(op.continueHandler);
+  if (!canContinue) {
+    saveRunStatus_({ ...totals, state: "paused", message: `${op.title} paused with ${remaining} to go. Run it again to continue.` });
+    return { message: { title: `${op.title} Paused`, text: `Written so far: ${totals.written}. ${remaining} answer(s) to go.\n\nRun it again to continue — finished cells are skipped.${errorNote}` }, authError: false };
   }
-
-  showToast_(`AI Rubric Comments Done! Written: ${commentsWritten}, Skipped/Errors: ${errorsEncountered}`, 'Success', 10);
-  ui.alert("AI Rubric Commenting Complete", `Finished generating rubric-based comments.\nComments written: ${commentsWritten}\nErrors/Skipped: ${errorsEncountered}`, ui.ButtonSet.OK);
-  Logger.log(`aiRubricComment complete. Written: ${commentsWritten}, Errors: ${errorsEncountered}`);
+  saveRunStatus_({ ...totals, state: "scheduled", message: `${op.title} paused at the 5-minute limit; continuing automatically in about a minute (${remaining} to go).` });
+  showToast_(`Paused at the time limit. Continuing automatically in about a minute (${remaining} to go).`, op.title, 15);
+  const message = isContinuation ? null : { title: `${op.title} Continues in the Background`,
+    text: `Written so far: ${totals.written}. ${remaining} answer(s) to go.\n\nGoogle limits each run to a few minutes, so the rest continues automatically in about a minute. You can close this spreadsheet; progress appears in the Start Here panel.${errorNote}` };
+  return { message, authError: false };
 }

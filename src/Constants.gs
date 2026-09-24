@@ -30,3 +30,23 @@ const CLAUDE_MAX_RETRY_AFTER_MS = 60000; // Cap on a server-requested retry-afte
 
 // AI operations stop after this long — leaves ~1 min buffer before GAS hard-kills at 6 min.
 const MAX_AI_RUNTIME_MS = 300000;
+
+// Sheet names used throughout the tool.
+const MAIN_SHEET_NAME = "Main Sheet";
+const ANSWERS_SHEET_NAME = "Answers";
+const SETTINGS_SHEET_NAME = "Settings";
+
+// Choices offered as dropdowns in the Settings sheet.
+const CLAUDE_MODEL_CHOICES = ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"];
+const GENEROSITY_CHOICES = ["1", "2", "3", "4", "5"];
+const DEFAULT_GENEROSITY = 3;
+const YES_NO_CHOICES = ["Yes", "No"];
+
+// AI-written cells are highlighted until a person edits them or marks them reviewed.
+const AI_HIGHLIGHT_COLOR = "#e8e0f8";
+const AI_CELL_NOTE = "Written by AI — review before uploading. Editing this cell (or Mark All as Reviewed) removes the highlight.";
+
+// Long AI runs continue automatically in the background after the 5-minute pause.
+const AUTO_CONTINUE_DELAY_MS = 60000;
+const AUTO_CONTINUE_MAX_RUNS = 20; // Safety cap: ~20 × 5 min of work per chain.
+const AUTO_CONTINUE_MAX_LOCK_RETRIES = 10; // A continuation that finds another run busy retries this many times.

@@ -10,33 +10,39 @@ These files work together to provide AI-powered grading and feedback for Canvas 
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [Constants.gs](Constants.gs) | ~20 | Configuration constants, model defaults, retry policy |
-| [Toast.gs](Toast.gs) | ~10 | Toast notification helper functions |
-| [ConfigHelpers.gs](ConfigHelpers.gs) | ~120 | Settings and configuration management |
-| [APIKeyHelpers.gs](APIKeyHelpers.gs) | ~230 | Secure API key storage and retrieval |
+| [Constants.gs](Constants.gs) | ~50 | Defaults, model lists, dropdown choices, retry and time limits |
+| [Toast.gs](Toast.gs) | ~60 | Toasts, alerts, and confirmations that also work in background runs |
+| [ConfigHelpers.gs](ConfigHelpers.gs) | ~160 | Settings and configuration |
+| [APIKeyHelpers.gs](APIKeyHelpers.gs) | ~250 | Secure API key storage and retrieval |
 
 ### Integration Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
 | [CanvasAPIHelpers.gs](CanvasAPIHelpers.gs) | ~370 | Canvas LMS API integration |
-| [ClaudeAPIHelpers.gs](ClaudeAPIHelpers.gs) | ~400 | Claude AI API integration (prompts, retries, response parsing) |
+| [ClaudeAPIHelpers.gs](ClaudeAPIHelpers.gs) | ~570 | Claude API: prompts, retries, structured output, answer-key drafts |
 
-### Utility Files
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| [SheetUtilities.gs](SheetUtilities.gs) | ~190 | Google Sheets utilities & menu system |
-| [SheetProcessingHelpers.gs](SheetProcessingHelpers.gs) | ~270 | Data processing and parsing |
-| [AIOperationContext.gs](AIOperationContext.gs) | ~80 | Context initialization for AI operations |
-
-### Feature Files
+### Workflow Files (one per menu step)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [FetchData.gs](FetchData.gs) | ~380 | Fetch questions and submissions from Canvas |
-| [GradingTools.gs](GradingTools.gs) | ~510 | AI grading and feedback generation |
-| [UploadData.gs](UploadData.gs) | ~150 | Upload grades and comments to Canvas |
+| [FetchData.gs](FetchData.gs) | ~180 | Step 1: fetch from Canvas (and the question prompts half) |
+| [FetchResponses.gs](FetchResponses.gs) | ~190 | Step 1: the student responses half |
+| [AnswerKeyDrafts.gs](AnswerKeyDrafts.gs) | ~120 | Step 2: AI-drafted answer keys and rubrics |
+| [GradingTools.gs](GradingTools.gs) | ~280 | Steps 3–4: grading and feedback engine |
+| [UploadData.gs](UploadData.gs) | ~160 | Step 5: upload grades and comments to Canvas |
+
+### Support Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| [SheetUtilities.gs](SheetUtilities.gs) | ~200 | Menu, Settings sheet and dropdowns, Clear tools |
+| [SetupCheck.gs](SetupCheck.gs) | ~200 | Check Setup and the progress checklist |
+| [Sidebar.gs](Sidebar.gs) + [Sidebar.html](Sidebar.html) | ~50 + ~230 | Start Here panel |
+| [AIHighlights.gs](AIHighlights.gs) | ~95 | Highlighting AI-written cells until reviewed |
+| [AutoContinue.gs](AutoContinue.gs) | ~80 | Background continuation of long runs |
+| [SheetProcessingHelpers.gs](SheetProcessingHelpers.gs) | ~250 | Sheet parsing and writing |
+| [AIOperationContext.gs](AIOperationContext.gs) | ~50 | Prerequisite checks for grading and feedback |
 
 ### Project Manifest
 
@@ -58,8 +64,8 @@ If you prefer to install manually:
 
 1. Create a new Google Spreadsheet
 2. Open **Extensions** → **Apps Script**
-3. For each file in this folder:
-   - Create a new script file with the same name
+3. For each `.gs` file and `Sidebar.html` in this folder:
+   - Create a new script (or HTML) file with the same name
    - Copy and paste the code
 4. Save and refresh your spreadsheet
 
@@ -115,35 +121,25 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
 
 ## 📊 File Statistics
 
-- **Total Lines**: ~2,750
-- **Total Files**: 12 `.gs` files + `appsscript.json`
+- **Total Lines**: ~3,400
+- **Total Files**: 18 `.gs` files, `Sidebar.html`, and `appsscript.json`
 - **Languages**: JavaScript (Google Apps Script)
 - **APIs**: Canvas LMS, Anthropic Claude
 
 ## ⚡ Quick Reference
 
-### Key Functions by Use Case
+### Menu Items (Grading with AI)
 
-**Fetching Data** (Canvas Tools Menu):
-- `fetchAndPopulateQuestionPrompts()` - Import questions, prompts, and max points to "Answers" sheet
-- `fetchAndPopulateQuizResponses()` - Download student submissions to main sheet
+- **Start Here** → `showStartHerePanel()`
+- **1. Fetch from Canvas** → `fetchEverythingFromCanvas()`
+- **2. Draft Answer Keys with AI** → `draftAnswerKeysWithAI()`
+- **3. Grade Answers** → `gradeAnswers()` (continues in the background via `continueGradeAnswers()`)
+- **4. Write Feedback** → `writeFeedback()` (continues in the background via `continueWriteFeedback()`)
+- **5. Upload to Canvas** → `uploadEssayGradesToCanvas()`
+- **Check Setup** → `checkSetup()`
+- **More Tools** → `markAllAsReviewed()`, `clearGrades()`, `clearComments()`, `clearGradesAndComments()`, `fetchAndPopulateQuestionPrompts()`, `fetchAndPopulateQuizResponses()`, `setupSettingsSheet()`, `resetClaudeApiKey()`, `resetCanvasApiKey()`
 
-**AI Grading** (Grading Tools Menu):
-- `autoGradeWithClaude()` - Grade using overall answer keys (Column C)
-- `aiRubricGrade()` - Grade using your rubric criteria (Columns E+)
-- `generateAIComments()` - Generate feedback without rubrics
-- `aiRubricComment()` - Generate rubric-based feedback
-
-**Uploading Results** (Canvas Tools Menu):
-- `uploadEssayGradesToCanvas()` - Upload grades and comments to Canvas
-
-**Sheet Management** (Sheet Tools Menu):
-- `clearGradesAndOrComments()` - Clear grades and/or comments from main sheet
-- `setupSettingsSheet()` - Create or verify Settings sheet
-- `resetClaudeApiKey()` / `resetCanvasApiKey()` - Clear a stored API key so it can be re-entered
-
-**Menu System** (SheetUtilities.gs):
-- `onOpen()` - Creates three menus: Canvas Tools, Grading Tools, Sheet Tools
+Menu, trigger, and panel functions must stay public (no trailing underscore). `onOpen()` builds the menu and `onEdit()` clears AI highlights when a person edits a cell.
 
 ## 📝 License
 

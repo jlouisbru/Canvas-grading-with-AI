@@ -1,380 +1,168 @@
 // FetchData.gs
 
-/**
- * Fetches essay question prompts from Canvas and populates the "Answers" sheet.
- * This function will NOT programmatically resize columns. Existing/default widths will be maintained.
- */
-function fetchAndPopulateQuestionPrompts() {
-  const ui = SpreadsheetApp.getUi();
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const answersSheetName = "Answers";
-  let answersSheet = spreadsheet.getSheetByName(answersSheetName);
+/** Menu action (step 1): fetches question prompts, then student responses, in one go. */
+function fetchEverythingFromCanvas() {
+  runCanvasFetch_(true, true);
+}
 
-  const baseHeaders = [
+/** Menu action (More tools): fetches only the question prompts into the "Answers" sheet. */
+function fetchAndPopulateQuestionPrompts() {
+  runCanvasFetch_(true, false);
+}
+
+/** Menu action (More tools): fetches only student responses into "Main Sheet". */
+function fetchAndPopulateQuizResponses() {
+  runCanvasFetch_(false, true);
+}
+
+/**
+ * Shared driver for the fetch menu actions: reads config and the Canvas key once, runs the
+ * requested fetches, and shows one summary with the next step.
+ * @param {boolean} includePrompts Fetch question prompts into "Answers".
+ * @param {boolean} includeResponses Fetch student responses into "Main Sheet".
+ * @private
+ */
+function runCanvasFetch_(includePrompts, includeResponses) {
+  const ui = SpreadsheetApp.getUi();
+  const config = getConfigFromSheet_();
+  if (!config) return;
+  const canvasApiKey = getCanvasApiKey_();
+  if (!canvasApiKey) return;
+
+  try {
+    const lines = [];
+    if (includePrompts) {
+      showToast_('Fetching question prompts from Canvas…', 'Working…', -1);
+      const prompts = fetchQuestionPromptsCore_({ ...config }, canvasApiKey);
+      lines.push(`Loaded ${prompts.questionCount} essay question(s) into "${ANSWERS_SHEET_NAME}". Your answer keys and rubrics were kept.`);
+    }
+    if (includeResponses) {
+      showToast_('Fetching student responses from Canvas…', 'Working…', -1);
+      const responses = fetchQuizResponsesCore_({ ...config }, canvasApiKey);
+      SpreadsheetApp.getActiveSpreadsheet().getSheetByName(MAIN_SHEET_NAME).activate();
+      lines.push(`Loaded ${responses.refreshedCount} student(s) from Canvas into "${MAIN_SHEET_NAME}".`);
+      if (responses.preservedCount > 0) lines.push(`Kept ${responses.preservedCount} row(s) you'd already graded or commented on, unchanged.`);
+    }
+    lines.push("", getNextStepHint_());
+    showToast_('Fetch complete.', 'Done', 5);
+    ui.alert('Fetched from Canvas', lines.join("\n"), ui.ButtonSet.OK);
+  } catch (error) {
+    if (error.isCanvasAuthError) { handleCanvasAuthError_(); showToast_('Canvas API key error.', 'Error', 5); return; }
+    Logger.log(`Error fetching from Canvas: ${error.message}\nStack: ${error.stack}`);
+    showToast_('Fetch failed.', 'Error', 5);
+    ui.alert('Fetch Failed', `${error.message}\n\nTip: "Check Setup" in the menu tests your Canvas settings and key.`, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Suggests the next workflow step based on what's already filled in.
+ * @returns {string}
+ * @private
+ */
+function getNextStepHint_() {
+  const questions = parseAnswersSheet_() || {};
+  const missingKeys = Object.values(questions).filter(q => !q.key && q.criteria.length === 0).length;
+  if (missingKeys > 0) {
+    return `Next: ${missingKeys} question(s) need an answer key (Column C of "${ANSWERS_SHEET_NAME}"). Type them in, or use "2. Draft Answer Keys with AI".`;
+  }
+  return `Next: "3. Grade Answers".`;
+}
+
+/**
+ * Builds the managed header row of the "Answers" sheet.
+ * @returns {string[]}
+ * @private
+ */
+function getAnswersSheetHeaders_() {
+  const headers = [
     "Question ID & Title (from Canvas)",   // Col A
     "Full Question Prompt (from Canvas)",  // Col B
     "Overall Answer Key (Manual Entry)",   // Col C
     "Max Points (from Canvas)"             // Col D
   ];
   for (let i = 1; i <= MAX_RUBRIC_CRITERIA; i++) {
-    baseHeaders.push(`Criterion ${i} Desc`);
-    baseHeaders.push(`Criterion ${i} Pts`);
+    headers.push(`Criterion ${i} Desc`);
+    headers.push(`Criterion ${i} Pts`);
   }
-  const numManagedColumns = baseHeaders.length;
-
-  if (!answersSheet) {
-    answersSheet = spreadsheet.insertSheet(answersSheetName);
-    Logger.log(`Created new sheet: "${answersSheetName}"`);
-    // Set headers - Google Sheets will apply default widths
-    answersSheet.getRange(1, 1, 1, numManagedColumns).setValues([baseHeaders]);
-    answersSheet.setFrozenRows(1);
-    Logger.log(`Set headers on new "Answers" sheet. No programmatic column resizing applied.`);
-  } else {
-    // Check if headers need update. If so, set them.
-    // No programmatic resizing will occur. Columns retain current/default widths.
-    let headersNeedUpdateForManagedPart = false;
-    if (answersSheet.getMaxColumns() < numManagedColumns) {
-      headersNeedUpdateForManagedPart = true;
-    } else {
-      const currentManagedHeaderValues = answersSheet.getRange(1, 1, 1, numManagedColumns).getValues()[0];
-      for (let i = 0; i < numManagedColumns; i++) {
-        if (currentManagedHeaderValues[i] !== baseHeaders[i]) {
-          headersNeedUpdateForManagedPart = true;
-          break;
-        }
-      }
-    }
-    if (headersNeedUpdateForManagedPart) {
-      Logger.log(`Headers for managed columns on "Answers" sheet need update.`);
-      answersSheet.getRange(1, 1, 1, numManagedColumns).setValues([baseHeaders]);
-      answersSheet.setFrozenRows(1); // Ensure frozen rows if headers are reset
-      Logger.log(`Updated headers for script-managed columns on "Answers" sheet. No programmatic column resizing applied.`);
-    } else {
-      Logger.log(`Headers on "Answers" sheet are current. No changes to headers or column widths made by script.`);
-    }
-  }
-
-  try {
-    const config = getConfigFromSheet_();
-    if (!config) return;
-    const canvasApiKey = getCanvasApiKey_();
-    if (!canvasApiKey) return;
-
-    showToast_('Fetching question prompts from Canvas...', 'Processing...', -1);
-
-    const quizResult = getQuizIdFromAssignment_(canvasApiKey, config);
-    if (!quizResult) {
-      throw new Error(`Could not determine Quiz ID from Assignment ID ${config.assignmentId}.`);
-    }
-    const quizId = quizResult.quizId;
-
-    const { questionMap: canvasQuestionMap, orderedQuestionIds: canvasOrderedQIds } = getEssayQuestions_(canvasApiKey, config, quizId);
-
-    if (canvasOrderedQIds.length === 0) {
-      ui.alert("Info", "No essay questions found in the specified Canvas quiz.", ui.ButtonSet.OK);
-      showToast_('No questions found in Canvas.', 'Info', 5);
-      const lastRow = answersSheet.getLastRow();
-      if (lastRow > 1) {
-        answersSheet.getRange(2, 1, lastRow - 1, numManagedColumns).clearContent();
-        Logger.log("Cleared old data from managed columns in 'Answers' sheet as no questions were found in Canvas.");
-      }
-      return;
-    }
-
-    const manualDataStore = new Map();
-    const numCurrentDataRows = answersSheet.getLastRow() - 1;
-
-    if (numCurrentDataRows > 0) {
-      const colsToReadForExistingData = Math.min(answersSheet.getMaxColumns(), numManagedColumns);
-      if (colsToReadForExistingData > 0) {
-        const existingAnswersValues = answersSheet.getRange(2, 1, numCurrentDataRows, colsToReadForExistingData).getValues();
-        existingAnswersValues.forEach(rowData => {
-          const fullQIdCellText = rowData[0] ? String(rowData[0]).trim() : "";
-          const qIdMatch = fullQIdCellText.match(/\[Q ID: (\d+)\]/);
-          if (qIdMatch && qIdMatch[1]) {
-            const qId = qIdMatch[1];
-            const overallKey = (rowData.length > 2 && rowData[2] !== undefined) ? String(rowData[2]).trim() : "";
-            const rubricValues = [];
-            for (let k = 0; k < MAX_RUBRIC_CRITERIA * 2; k++) {
-              const rubricCellIndex = 4 + k;
-              if (rubricCellIndex < rowData.length) {
-                rubricValues.push(rowData[rubricCellIndex] !== undefined ? String(rowData[rubricCellIndex]) : "");
-              } else {
-                rubricValues.push("");
-              }
-            }
-            manualDataStore.set(qId, { overallKey: overallKey, rubricValues: rubricValues });
-          }
-        });
-      }
-    }
-    Logger.log(`Loaded manual data for ${manualDataStore.size} questions from "Answers" sheet (managed columns).`);
-
-    if (numCurrentDataRows > 0 && numManagedColumns > 0) {
-      answersSheet.getRange(2, 1, numCurrentDataRows, numManagedColumns).clearContent();
-    }
-
-    let questionsProcessedCount = 0;
-    const rowsToWrite = [];
-    canvasOrderedQIds.forEach(qId => {
-      const qInfo = canvasQuestionMap[qId];
-      if (!qInfo) {
-        Logger.log(`Warning: QID ${qId} from Canvas ordered list not found in questionMap. Skipping.`);
-        return;
-      }
-
-      const preservedData = manualDataStore.get(qId);
-      const overallKeyToUse = preservedData ? preservedData.overallKey : "";
-      const rubricValuesToUse = preservedData ? preservedData.rubricValues : [];
-
-      const newRowValues = [
-        `[Q ID: ${qId}] ${qInfo.title}`,
-        qInfo.prompt,
-        overallKeyToUse,
-        qInfo.points_possible
-      ];
-
-      for (let k = 0; k < MAX_RUBRIC_CRITERIA * 2; k++) {
-        newRowValues.push(rubricValuesToUse[k] || "");
-      }
-      rowsToWrite.push(newRowValues);
-      questionsProcessedCount++;
-    });
-
-    if (rowsToWrite.length > 0) {
-      answersSheet.getRange(2, 1, rowsToWrite.length, numManagedColumns).setValues(rowsToWrite);
-    }
-
-    showToast_('"Answers" sheet rebuilt successfully!', 'Success', 5);
-    ui.alert('Answers Sheet Rebuilt',
-      `"Answers" sheet has been rebuilt and synchronized with Canvas.\n\n${questionsProcessedCount} questions processed within ${numManagedColumns} managed columns.\n\n` +
-      `Column widths were not programmatically changed by this script.\n\n`+
-      `Please review and update Column C ('Overall Answer Key') and any rubric criteria (Columns E onwards) as needed. Any user-added columns beyond the managed area should be preserved.`,
-      ui.ButtonSet.OK);
-
-  } catch (error) {
-    if (error.isCanvasAuthError) { handleCanvasAuthError_(); showToast_('Canvas API key error.', 'Error', 5); return; }
-    Logger.log(`Error in fetchAndPopulateQuestionPrompts: ${error.message}\nStack: ${error.stack}`);
-    showToast_('Error updating "Answers" sheet.', 'Error', 5);
-    ui.alert('Error Updating "Answers" Sheet', `Could not update "Answers" sheet: ${error.message}. Please check the logs.`, ui.ButtonSet.OK);
-  }
+  return headers;
 }
 
 /**
- * Fetches essay quiz responses, grades, and comments from Canvas into "Main Sheet".
- * Rows that are fully graded or already have comments are preserved; others are refreshed from Canvas.
+ * Returns the "Answers" sheet, creating it or repairing its managed headers if needed.
+ * Column widths are left as they are.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet}
+ * @private
  */
-function fetchAndPopulateQuizResponses() {
-  const ui = SpreadsheetApp.getUi();
+function ensureAnswersSheet_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const mainSheetName = "Main Sheet";
-  let mainSheet = spreadsheet.getSheetByName(mainSheetName);
-
-  if (!mainSheet) {
-    mainSheet = spreadsheet.insertSheet(mainSheetName);
-    Logger.log(`Created new sheet: "${mainSheetName}" because it was not found.`);
-    ui.alert("Sheet Created", `The sheet named "${mainSheetName}" was not found and has been created.`, ui.ButtonSet.OK);
+  const headers = getAnswersSheetHeaders_();
+  let answersSheet = spreadsheet.getSheetByName(ANSWERS_SHEET_NAME);
+  if (!answersSheet) {
+    answersSheet = spreadsheet.insertSheet(ANSWERS_SHEET_NAME);
+    Logger.log(`Created new sheet: "${ANSWERS_SHEET_NAME}"`);
   }
-  mainSheet.activate();
-  showToast_('Starting: Fetch Quiz Responses...', 'Initializing', -1);
+  const needsHeaders = answersSheet.getMaxColumns() < headers.length ||
+    answersSheet.getRange(1, 1, 1, headers.length).getValues()[0].some((value, i) => value !== headers[i]);
+  if (needsHeaders) {
+    answersSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    answersSheet.setFrozenRows(1);
+    Logger.log(`Set managed headers on "${ANSWERS_SHEET_NAME}".`);
+  }
+  return answersSheet;
+}
 
-  try {
-    const config = getConfigFromSheet_();
-    if (!config) {
-      showToast_('Initialization Error: Config missing.', 'Error', 5);
-      return;
-    }
-    const canvasApiKey = getCanvasApiKey_();
-    if (!canvasApiKey) {
-      showToast_('Initialization Error: Canvas API Key missing.', 'Error', 5);
-      return;
-    }
-    showToast_('Config OK. Fetching Canvas Data...', 'Processing...', -1); // Essential: Start of Canvas interaction
+/**
+ * Rebuilds the "Answers" sheet from the Canvas quiz, keeping the answer keys, rubric criteria,
+ * and AI-draft highlights already entered for each question.
+ * @param {object} config From getConfigFromSheet_().
+ * @param {string} canvasApiKey Canvas API key.
+ * @returns {{questionCount: number}}
+ * @throws {Error} If the quiz can't be found or has no essay questions.
+ * @private
+ */
+function fetchQuestionPromptsCore_(config, canvasApiKey) {
+  const answersSheet = ensureAnswersSheet_();
+  const numManagedColumns = getAnswersSheetHeaders_().length;
 
-    const quizResult = getQuizIdFromAssignment_(canvasApiKey, config);
-    if (!quizResult) {
-      showToast_('Error: Could not determine Quiz ID.', 'Error', 7);
-      throw new Error(`Could not determine Quiz ID from Assignment ID ${config.assignmentId}.`);
-    }
-    const quizId = quizResult.quizId;
-    // If a quiz URL was provided, use the resolved assignment ID for the submissions endpoint.
-    if (quizResult.resolvedAssignmentId) config.assignmentId = quizResult.resolvedAssignmentId;
+  const quizResult = getQuizIdFromAssignment_(canvasApiKey, config);
+  if (!quizResult) throw new Error(`Could not find a quiz for ASSIGNMENT_ID ${config.assignmentId}. Check that it's a Classic Quiz with essay questions.`);
+  const { questionMap, orderedQuestionIds } = getEssayQuestions_(canvasApiKey, config, quizResult.quizId);
+  if (orderedQuestionIds.length === 0) throw new Error("No essay questions were found in this Canvas quiz.");
 
-    const { questionMap, orderedQuestionIds } = getEssayQuestions_(canvasApiKey, config, quizId);
-
-    if (orderedQuestionIds.length === 0) {
-      showToast_('No essay questions found in quiz.', 'Info', 7);
-      ui.alert("Info", "No essay questions found in the specified Canvas quiz.", ui.ButtonSet.OK);
-      return;
-    }
-    Logger.log(`Found ${orderedQuestionIds.length} essay questions.`);
-    showToast_(`${orderedQuestionIds.length} questions found. Fetching students & submissions...`, 'Canvas API', -1); // Essential: Grouping major API calls
-
-    // --- Header Setup Logic (No individual toasts here, assumed quick) ---
-    const requiredHeaders = ["Student Name (Sortable)", "Canvas User ID"];
-    // ... (The detailed header setup logic remains unchanged) ...
-    let currentHeaders = [];
-    let sheetLastCol = mainSheet.getLastColumn();
-    let sheetMaxCol = mainSheet.getMaxColumns();
-    if (mainSheet.getLastRow() > 0) {
-        currentHeaders = mainSheet.getRange(1, 1, 1, Math.max(sheetLastCol, requiredHeaders.length)).getValues()[0];
-    } else {
-        mainSheet.appendRow(new Array(requiredHeaders.length).fill(""));
-        currentHeaders = new Array(requiredHeaders.length).fill("");
-    }
-    if (String(currentHeaders[0]).trim() !== requiredHeaders[0]) {
-        if (mainSheet.getMaxColumns() === 0 || (currentHeaders[0] !== undefined && String(currentHeaders[0]).trim() !== requiredHeaders[0])) {
-           mainSheet.insertColumnBefore(1);
-        }
-        mainSheet.getRange(1, 1).setValue(requiredHeaders[0]);
-    }
-    if (mainSheet.getMaxColumns() < 2 || (currentHeaders[1] === undefined || String(currentHeaders[1]).trim() !== requiredHeaders[1])) {
-        if (mainSheet.getMaxColumns() < 2) {
-            mainSheet.insertColumnAfter(1);
-        } else if (currentHeaders[1] !== undefined && String(currentHeaders[1]).trim() !== requiredHeaders[1]) {
-            mainSheet.insertColumnBefore(2);
-        }
-        mainSheet.getRange(1, 2).setValue(requiredHeaders[1]);
-    }
-    // --- End of Header Setup Logic ---
-
-    const qidsForHeaderParsing = orderedQuestionIds.length > 0 ? orderedQuestionIds : getHeaderValues_(mainSheet).map(h => (String(h).match(/\[Q ID: (\d+)\]/) || [])[1]).filter(Boolean);
-    const mainSheetHeaderInfo = parseMainSheetHeader_(mainSheet, qidsForHeaderParsing);
-
-    if (!mainSheetHeaderInfo) {
-        showToast_('Error: Could not parse main sheet header.', 'Error', 7);
-        throw new Error(`Could not parse main sheet header on "${mainSheetName}".`);
-    }
-
-    const studentNameColIndexForRead = 0;
-    const { userIdColIndex: sheetUserIdColIndexForRead, questionColumnsMap } = mainSheetHeaderInfo;
-
-    const fullyPopulatedStudentRows = new Map();
-    const existingSheetUserIds = new Set();
-    const mainSheetLastRow = mainSheet.getLastRow();
-
-    if (sheetUserIdColIndexForRead !== -1 && mainSheetLastRow >= 2) {
-      const existingStudentDataValues = mainSheet.getRange(2, 1, mainSheetLastRow - 1, mainSheet.getLastColumn()).getValues();
-      existingStudentDataValues.forEach(rowValues => {
-        const userId = (rowValues.length > sheetUserIdColIndexForRead && rowValues[sheetUserIdColIndexForRead]) ? String(rowValues[sheetUserIdColIndexForRead]).trim() : null;
-        if (userId) {
-          existingSheetUserIds.add(userId);
-          let isRowCompleteForFetching = orderedQuestionIds.length > 0;
-          for (const qId of orderedQuestionIds) {
-            const qCols = questionColumnsMap.get(qId);
-            const answerCell = (qCols && rowValues.length > qCols.answerColIndex) ? rowValues[qCols.answerColIndex] : undefined;
-            const gradeCell = (qCols && rowValues.length > qCols.gradeColIndex) ? rowValues[qCols.gradeColIndex] : undefined;
-            const hasAnswer = answerCell !== undefined && String(answerCell).trim() !== "";
-            const hasGrade = gradeCell !== undefined && String(gradeCell).trim() !== "";
-            if (!qCols || !hasAnswer || !hasGrade) { isRowCompleteForFetching = false; break; }
-          }
-          // Also preserve any row that has at least one non-empty comment, so mid-workflow
-          // state (answers + comments, no grades yet) is not silently overwritten.
-          const hasAnyComment = orderedQuestionIds.some(qId => {
-            const qCols = questionColumnsMap.get(qId);
-            const commentCell = (qCols && qCols.commentColIndex !== undefined && rowValues.length > qCols.commentColIndex) ? rowValues[qCols.commentColIndex] : undefined;
-            return commentCell !== undefined && String(commentCell).trim() !== "";
-          });
-          if (isRowCompleteForFetching || hasAnyComment) { fullyPopulatedStudentRows.set(userId, rowValues); }
-        }
+  // Remember what the instructor entered (and which cells are unreviewed AI drafts) for each question.
+  const preserved = new Map();
+  const numCurrentDataRows = answersSheet.getLastRow() - 1;
+  if (numCurrentDataRows > 0) {
+    const dataRange = answersSheet.getRange(2, 1, numCurrentDataRows, numManagedColumns);
+    const values = dataRange.getValues();
+    const backgrounds = dataRange.getBackgrounds();
+    values.forEach((rowData, r) => {
+      const qIdMatch = String(rowData[0] ?? "").match(/\[Q ID: (\d+)\]/);
+      if (!qIdMatch) return;
+      preserved.set(qIdMatch[1], {
+        overallKey: String(rowData[2] ?? "").trim(),
+        rubricValues: rowData.slice(4, 4 + MAX_RUBRIC_CRITERIA * 2).map(v => (v === undefined ? "" : v)),
+        aiMarkedColumns: backgrounds[r].map((color, c) => (color === AI_HIGHLIGHT_COLOR ? c + 1 : null)).filter(Boolean)
       });
-      Logger.log(`Found ${fullyPopulatedStudentRows.size} students with complete answer/grade data on sheet.`);
-    }
-
-    const studentMapFromCanvas = getStudents_(canvasApiKey, config);
-    Logger.log(`Fetched ${Object.keys(studentMapFromCanvas).length} students from Canvas.`);
-
-    const assignmentSubmissionsApiPath = `/api/v1/courses/${config.courseId}/assignments/${config.assignmentId}/submissions`;
-    const assignmentSubmissions = fetchCanvasAPI_(config.canvasBaseUrl, assignmentSubmissionsApiPath, canvasApiKey, { 'include[]': 'submission_history', 'per_page': 100 });
-
-    if (!Array.isArray(assignmentSubmissions)) {
-      showToast_('Error: Could not retrieve assignment submissions.', 'Error', 7);
-      throw new Error("Could not retrieve assignment submissions in the expected array format.");
-    }
-    Logger.log(`Received ${assignmentSubmissions.length} total assignment submission records.`);
-    showToast_('Canvas data fetched. Processing student answers...', 'Processing...', -1); // Essential: After all major API calls
-
-    const studentDataFromCanvas = processAssignmentSubmissionsForEssayData_(assignmentSubmissions, studentMapFromCanvas, questionMap);
-    showToast_('Student answers processed. Compiling sheet data...', 'Processing...', -1); // Essential: After primary data processing
-
-    const finalSheetHeader = prepareMainSheetHeader_(orderedQuestionIds, questionMap);
-    const finalSheetData = [finalSheetHeader];
-
-    const allStudentIds = new Set([...Object.keys(studentMapFromCanvas), ...Array.from(fullyPopulatedStudentRows.keys())]);
-    const sortedAllStudentIds = Array.from(allStudentIds).sort((idA, idB) => {
-        const nameA = studentMapFromCanvas[idA]?.sortable_name || studentMapFromCanvas[idA]?.name || idA;
-        const nameB = studentMapFromCanvas[idB]?.sortable_name || studentMapFromCanvas[idB]?.name || idB;
-        return nameA.localeCompare(nameB);
     });
-
-    let updatedCount = 0, newCount = 0, preservedCount = 0;
-    let studentsProcessedInLoop = 0;
-
-    Logger.log(`Processing ${sortedAllStudentIds.length} unique student entries for the sheet.`);
-
-    sortedAllStudentIds.forEach(userId => {
-      studentsProcessedInLoop++;
-      if (studentsProcessedInLoop % 10 === 0 || studentsProcessedInLoop === sortedAllStudentIds.length) {
-        showToast_(`Compiling data for student ${studentsProcessedInLoop}/${sortedAllStudentIds.length}...`, 'Processing...', -1);
-      }
-
-      if (fullyPopulatedStudentRows.has(userId)) {
-        const existingRow = fullyPopulatedStudentRows.get(userId);
-        const newRow = [];
-        const studentNameOnSheet = (existingRow.length > studentNameColIndexForRead) ? existingRow[studentNameColIndexForRead] : "Unknown";
-        const canvasStudentInfo = studentMapFromCanvas[userId];
-        newRow.push(studentNameOnSheet || (canvasStudentInfo?.sortable_name || canvasStudentInfo?.name || "Unknown Student"));
-        newRow.push(userId);
-        orderedQuestionIds.forEach(qId => {
-          const qCols = questionColumnsMap.get(qId);
-          if (qCols) {
-            newRow.push((existingRow.length > qCols.answerColIndex) ? (existingRow[qCols.answerColIndex] ?? "") : "");
-            newRow.push((existingRow.length > qCols.gradeColIndex) ? (existingRow[qCols.gradeColIndex] ?? "") : "");
-            newRow.push((qCols.commentColIndex !== undefined && existingRow.length > qCols.commentColIndex && existingRow[qCols.commentColIndex] !== undefined) ? existingRow[qCols.commentColIndex] : "");
-          } else { newRow.push("", "", ""); }
-        });
-        finalSheetData.push(newRow);
-        preservedCount++;
-      } else {
-        const studentInfo = studentMapFromCanvas[userId];
-        if (studentInfo) {
-          const answersForStudent = studentDataFromCanvas[userId]?.answers || {};
-          const row = [ studentInfo.sortable_name || studentInfo.name, userId ];
-          orderedQuestionIds.forEach(qId => {
-            const answerInfo = answersForStudent[qId];
-            row.push(answerInfo?.text ?? "");
-            row.push(answerInfo?.score ?? "");
-            row.push(answerInfo?.comment ?? "");
-          });
-          finalSheetData.push(row);
-          if (existingSheetUserIds.has(userId)) updatedCount++;
-          else newCount++;
-        } else {
-          Logger.log(`Student ID ${userId} not in current Canvas roster. Skipping.`);
-        }
-      }
-    });
-    Logger.log(`Main sheet ("${mainSheetName}"): ${preservedCount} students preserved, ${updatedCount} updated, ${newCount} new/added.`);
-    showToast_(`Data compiled. Writing ${finalSheetData.length -1} student(s) to sheet...`, 'Processing...', -1); // Essential: Before writing to sheet
-
-    writeToSheet_(mainSheet, finalSheetData, true);
-
-    showToast_('Fetch Complete! Sheet updated.', 'Success', 10);
-    ui.alert('Fetch Complete (Main Sheet)',
-      `Student data processed for the sheet "${mainSheetName}".\n` +
-      `Preserved rows (complete or with existing comments): ${preservedCount}\n` +
-      `Updated/New rows from Canvas: ${updatedCount + newCount}\n\n` +
-      `Note: Rows with answers but no grades and no comments were refreshed from Canvas.\n` +
-      `"Student Name (Sortable)" and "Canvas User ID" columns are now ensured.\n` +
-      `Column widths set to fit headers with additional padding.\n` +
-      `Grades and comments (if available) from Canvas have been included.\n` +
-      `Check sheet and Logs (View > Logs) for details.`,
-      ui.ButtonSet.OK);
-
-  } catch (error) {
-    if (error.isCanvasAuthError) { handleCanvasAuthError_(); showToast_('Canvas API key error.', 'Error', 5); return; }
-    Logger.log(`Error in fetchAndPopulateQuizResponses (targeting "${mainSheetName}"): ${error.message}\nStack: ${error.stack}`);
-    showToast_('Fetch Failed. Check logs.', 'Error', 10);
-    ui.alert(`Fetch Error (Sheet: "${mainSheetName}")`, `${error.message}. Check Logs for details (View > Logs).`, ui.ButtonSet.OK);
+    clearAIMarks_(dataRange);
+    dataRange.clearContent();
   }
+  Logger.log(`Kept manual data for ${preserved.size} questions from "${ANSWERS_SHEET_NAME}".`);
+
+  const rowsToWrite = orderedQuestionIds.map(qId => {
+    const qInfo = questionMap[qId];
+    const kept = preserved.get(qId);
+    const rubricValues = kept ? kept.rubricValues : [];
+    const row = [`[Q ID: ${qId}] ${qInfo.title}`, qInfo.prompt, kept ? kept.overallKey : "", qInfo.points_possible];
+    for (let k = 0; k < MAX_RUBRIC_CRITERIA * 2; k++) row.push(rubricValues[k] ?? "");
+    return row;
+  });
+  answersSheet.getRange(2, 1, rowsToWrite.length, numManagedColumns).setValues(rowsToWrite);
+
+  // Re-apply unreviewed-draft highlights at each question's (possibly new) row.
+  orderedQuestionIds.forEach((qId, i) => {
+    (preserved.get(qId)?.aiMarkedColumns || []).forEach(col => markAsAIWritten_(answersSheet.getRange(i + 2, col)));
+  });
+  return { questionCount: rowsToWrite.length };
 }

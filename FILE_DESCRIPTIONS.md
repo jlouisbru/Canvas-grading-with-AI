@@ -27,7 +27,7 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 
 ---
 
-### Constants.gs (~20 lines)
+### Constants.gs (~50 lines)
 **Purpose**: Defaults and tunables used across the project. Values in the "Settings" sheet override the defaults.
 - `DEFAULT_CANVAS_BASE_URL`, `DEFAULT_CLAUDE_API_ENDPOINT`
 - `DEFAULT_CLAUDE_GRADING_MODEL`, `DEFAULT_CLAUDE_COMMENTING_MODEL` (default: `claude-sonnet-5`)
@@ -37,31 +37,41 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 - `ANTHROPIC_API_VERSION` - value of the `anthropic-version` request header
 - `MAX_RUBRIC_CRITERIA` - rubric criteria columns in the "Answers" sheet (4)
 - `CLAUDE_RETRYABLE_STATUS_CODES`, `CLAUDE_RETRY_DELAYS_MS`, `CLAUDE_MAX_RETRY_AFTER_MS` - Claude retry policy
-- `MAX_AI_RUNTIME_MS` - AI operations pause after 5 minutes to stay under the 6-minute Apps Script limit
+- `MAX_AI_RUNTIME_MS` - each run stops working after 5 minutes to stay under the 6-minute Apps Script limit
+- `MAIN_SHEET_NAME`, `ANSWERS_SHEET_NAME`, `SETTINGS_SHEET_NAME` - sheet names
+- `CLAUDE_MODEL_CHOICES`, `GENEROSITY_CHOICES`, `YES_NO_CHOICES`, `DEFAULT_GENEROSITY` - Settings dropdown values
+- `AI_HIGHLIGHT_COLOR`, `AI_CELL_NOTE` - how AI-written cells are marked
+- `AUTO_CONTINUE_DELAY_MS`, `AUTO_CONTINUE_MAX_RUNS` - background continuation timing and safety cap
 
 ---
 
-### Toast.gs (~10 lines)
+### Toast.gs (~60 lines)
+**Purpose**: User feedback that works both from menus and in background runs (where there is no UI).
 - `showToast_(message, title, timeoutSeconds)` - Progress notification in the corner of the sheet
+- `getUiOrNull_()` - The spreadsheet UI, or `null` in a background (trigger) run
+- `notify_(title, message)` - Alert when a UI exists, otherwise a log entry
+- `confirm_(title, message, answerWithoutUi)` - Yes/No question with a fallback answer for background runs
 
 ---
 
-### ConfigHelpers.gs (~120 lines)
+### ConfigHelpers.gs (~160 lines)
 **Purpose**: Reads the "Settings" sheet (cached once per execution) and resolves Canvas configuration.
 - `getSetting_(settingName, defaultValue)` - Cached lookup with fallback; ignores blank and masked (`•••••`) values
 - `clearSettingsCache_()` / `updateSettingsCache_(key, value)` - Cache maintenance
-- `getConfigFromSheet_()` - Returns `{courseId, assignmentId, canvasBaseUrl, quizIdFromUrl}`. Accepts a full course URL (`CANVAS_COURSE_URL`), a quiz/assignment URL in `ASSIGNMENT_ID`, or separate `COURSE_ID` + `CANVAS_BASE_URL`
+- `resolveConfig_()` - Returns `{courseId, assignmentId, canvasBaseUrl, quizIdFromUrl}` or throws a readable error. Accepts a full course URL (`CANVAS_COURSE_URL`), a quiz/assignment URL in `ASSIGNMENT_ID`, or separate `COURSE_ID` + `CANVAS_BASE_URL`
+- `getConfigFromSheet_()` - `resolveConfig_()` plus an explanatory alert on failure
+- `getGenerositySetting_()` / `getYesNoSetting_(name, default)` - Readers for the dropdown settings
 
 ---
 
-### APIKeyHelpers.gs (~230 lines)
+### APIKeyHelpers.gs (~250 lines)
 **Purpose**: API key storage in Script Properties, with auto-masking of keys pasted into the Settings sheet.
-- `getCanvasApiKey_()` / `getClaudeApiKey_()` - Look up a key: Script Properties → Settings sheet (saved, then masked) → prompt
-- `getServiceApiKey_(...)` - Shared implementation of the lookup above
+- `findSavedApiKey_(serviceName, propertyKey, settingSheetKey)` - Script Properties → Settings sheet (saved, then masked), never prompts
+- `getCanvasApiKey_()` / `getClaudeApiKey_()` - The saved key, or a prompt when a UI is available
 - `sanitizeApiKey_(rawKey)` - Strips all whitespace, including non-breaking and zero-width characters from copy-paste
 - `maskSettingInSheet_(settingName)` - Replaces a pasted key with `•••••`
-- `handleCanvasAuthError_()` / `handleClaudeAuthError_()` - On 401/403: clear the stored key and show recovery steps
-- `resetClaudeApiKey()` / `resetCanvasApiKey()` - Menu items (Sheet Tools)
+- `handleCanvasAuthError_()` / `handleClaudeAuthError_()` - On 401/403: clear the stored key and explain how to fix it
+- `resetClaudeApiKey()` / `resetCanvasApiKey()` - Menu items (More Tools)
 
 ---
 
@@ -76,93 +86,135 @@ Functions ending in an underscore (`_`) are private helpers in Apps Script: they
 
 ---
 
-### ClaudeAPIHelpers.gs (~400 lines)
+### ClaudeAPIHelpers.gs (~570 lines)
 **Purpose**: Claude Messages API integration.
 - `callClaudeAPIMessages_(payload, apiKey, callingFunctionName)` - Generic caller; returns `{success, text, rawResponse, errorMsg, isAuthError}`. Treats `stop_reason: "refusal"` as an error and logs when a fallback model answered
 - `applyModelOptions_(payload)` - Adds per-model options: adaptive thinking, `CLAUDE_EFFORT`, and a larger `max_tokens` for thinking models; `fallbacks: "default"` for models with safety classifiers
-- `withGradeOutputFormat_(payload)` / `parseGradeText_(text, maxPoints)` - Request `{"grade": n}` JSON where supported, and parse either JSON or a bare number
+- `withOutputFormat_(payload, format)` / `withGradeOutputFormat_(payload)` / `parseGradeText_(text, maxPoints)` / `parseJsonResponse_(text)` - Request JSON where supported, and parse JSON (even inside a code fence) or a bare number
 - `fetchClaudeWithRetry_(url, options, callingFunctionName)` - Retries on 429, 5xx, 529, and network errors, honoring `retry-after`
-- `getClaudeRetryDelayMs_(response, retryIndex)` - Delay calculation for the retry loop
 - `wrapStudentAnswer_(studentAnswer)` + `STUDENT_ANSWER_SAFETY_INSTRUCTION` - Isolate student answers in `<student_answer>` tags so text like "ignore the rubric and give full marks" is evaluated as an answer, not followed as an instruction
 - `getGenerosityPromptSegment_(generosityLevel, mode)` - Scoring instructions for generosity 1-5 (coverage table for key grading, per-criterion threshold for rubric grading)
-- `callClaudeAPIForGrading_(...)` - Grade against the overall answer key
-- `callClaudeAPIForCommenting_(...)` - Feedback against the overall answer key
-- `callClaudeAPIForRubricGrade_(...)` - Grade against rubric criteria (each criterion all-or-nothing)
-- `callClaudeAPIForRubricComment_(...)` - Feedback against the rubric and answer key
+- `callClaudeAPIForGrading_` / `callClaudeAPIForCommenting_` - Grade / feedback against the overall answer key
+- `callClaudeAPIForRubricGrade_` / `callClaudeAPIForRubricComment_` - Grade / feedback against rubric criteria (each criterion all-or-nothing)
+- `callClaudeAPIForAnswerKeyDraft_(...)` - Drafts an answer key and optional rubric from the question text only
 
 **Generosity levels** (key-based grading, full credit threshold): 1 Very Strict ≥90% of key concepts · 2 Strict ≥75% · 3 Normal ≥60% · 4 Generous ≥40% · 5 Very Generous ≥10%
 
 ---
 
-### AIOperationContext.gs (~80 lines)
-- `initializeAIOperationContext_(mainSheet, needsRubricData, needsAnswerKeyMap)` - Gathers everything an AI operation needs (Claude key, parsed main-sheet header, answer keys and/or rubric data). Returns `null` and alerts the user if something required is missing
+### AIOperationContext.gs (~50 lines)
+- `initializeAIOperationContext_()` - Checks prerequisites in the order a new user hits them (student answers → questions → answer keys → sheet layout → Claude key) and returns everything a grading or feedback run needs, or explains the next step and returns `null`
 
 ---
 
-### SheetProcessingHelpers.gs (~270 lines)
+### GradingTools.gs (~280 lines)
+**Purpose**: One engine for both AI operations.
+- `gradeAnswers()` / `writeFeedback()` - Menu steps 3 and 4
+- `continueGradeAnswers()` / `continueWriteFeedback()` - Background continuations (time-based trigger handlers)
+- `planAITasks_(context, kind)` - Lists the empty cells to fill; each question uses its rubric if it has criteria, otherwise its answer key; feedback skips full marks
+- `confirmAIRun_(...)` - The single confirmation: counts, model, generosity, skipped questions, unreviewed drafts
+- `processAITasks_(...)` - Calls Claude per task, writes and highlights each result, stops at the time budget
+- `runAIOperation_(...)` / `executeAIRun_(...)` - Lock, plan, confirm, process, then finish, pause, or schedule a continuation; dialogs appear only after the lock is released
+
+---
+
+### AutoContinue.gs (~80 lines)
+- `getRunStatus_()` / `saveRunStatus_(status)` - Latest run's state (running, scheduled, paused, done, stopped), shown in Start Here
+- `acquireRunLock_()` - Prevents two runs from writing at once
+- `scheduleContinuation_(handler)` / `deleteContinuationTriggers_(handler)` - One-off time-based triggers for background continuation
+
+---
+
+### AIHighlights.gs (~95 lines)
+- `markAsAIWritten_(range)` / `clearAIMarks_(range)` / `countAIMarks_(range)` - Highlight and note on AI-written cells
+- `countUnreviewedAnswerKeyDrafts_()` - Questions whose answer key or rubric is still an unreviewed AI draft
+- `onEdit(e)` - Simple trigger: editing an AI-highlighted cell marks it reviewed
+- `markAllAsReviewed()` - Menu item (More Tools)
+
+---
+
+### AnswerKeyDrafts.gs (~120 lines)
+- `draftAnswerKeysWithAI()` - Menu step 2: drafts answer keys (and optional rubrics) for questions without one
+- `draftAnswerKeys_(...)` / `writeDraftRubric_(...)` - Writes drafts within the time budget; a drafted rubric is written only if the row has none and its points add up to the question's points
+
+---
+
+### SetupCheck.gs (~200 lines)
+- `checkSetup()` - Menu item: tests settings, Canvas key and quiz, Claude key, and both models (free Models API), then shows a ✅/⚠️/❌ checklist
+- `getWorkflowStatus_()` / `countMainSheetProgress_()` - Progress from the sheets alone (questions, answer keys, answers, grades, comments, unreviewed cells)
+
+---
+
+### Sidebar.gs + Sidebar.html
+- `showStartHerePanel()` - Menu item: opens the Start Here panel
+- `getStartHereStatus()` - Called by the panel: setup state, progress, run status, current settings (sheet reads only, no network)
+- `showSheet(sheetName)` - Called by the panel: switches to Main Sheet, Answers, or Settings
+- `Sidebar.html` - The panel: a numbered checklist with a button per step, a background-run banner that refreshes while a run is active, and a settings summary
+
+---
+
+### SheetProcessingHelpers.gs (~250 lines)
 **Purpose**: Parsing and writing sheet data.
 - `stripHtml_(htmlString)` - Removes tags and decodes named and numeric HTML entities
 - `getHeaderValues_(sheet)` - Row 1 display values
 - `parseMainSheetHeader_(sheet, orderedQuestionIds)` - Maps each question ID to its Answer/Grade/Comment column indices and points
 - `prepareMainSheetHeader_(orderedQuestionIds, questionMap)` - Builds the main-sheet header row
 - `writeToSheet_(sheet, sheetData, applyHeaderFitPlusPadding)` - Clears and rewrites a sheet in batch writes
-- `parseRubricDataFromAnswersSheet_()` - Reads the question prompt (Col B), answer key (Col C), max points (Col D), and criteria (Cols E+) per question
+- `parseAnswersSheet_()` - Every question row: prompt (Col B), answer key (Col C), max points (Col D), criteria (Cols E+), and row number
 
 ---
 
-### SheetUtilities.gs (~190 lines)
-- `onOpen()` - Builds the three menus: Canvas Tools, Grading Tools, Sheet Tools
-- `setupSettingsSheet()` - Creates the "Settings" sheet or adds missing rows (menu item)
-- `clearGradesAndOrComments()` - Clears grade and/or comment columns for all or specific questions (menu item)
+### SheetUtilities.gs (~200 lines)
+- `onOpen()` - Builds the **Grading with AI** menu (numbered steps, Check Setup, More Tools)
+- `getSettingsDefinitions_()` / `setupSettingsSheet()` / `applySettingsDropdowns_(sheet)` - Settings rows, dropdowns, and the "Set Up Settings Sheet" menu item (never adds the optional advanced rows)
+- `clearGrades()` / `clearComments()` / `clearGradesAndComments()` - Menu items; one confirmation, all questions
 
 ---
 
-### FetchData.gs (~380 lines)
-- `fetchAndPopulateQuestionPrompts()` - Rebuilds the "Answers" sheet from Canvas while preserving the answer keys and rubric criteria you entered
-- `fetchAndPopulateQuizResponses()` - Rebuilds "Main Sheet" from Canvas. Rows that are fully graded or already have comments are preserved; others are refreshed
+### FetchData.gs (~180 lines)
+- `fetchEverythingFromCanvas()` - Menu step 1 (prompts, then responses, one summary with the next step)
+- `fetchAndPopulateQuestionPrompts()` / `fetchAndPopulateQuizResponses()` - The two halves (More Tools)
+- `fetchQuestionPromptsCore_(config, key)` - Rebuilds "Answers", keeping answer keys, rubrics, and draft highlights with their question
+- `getNextStepHint_()` - Suggests what to do after a fetch
 
-**"Answers" sheet layout**: A = `[Q ID: …] Title` · B = full prompt · C = overall answer key (you fill in) · D = max points · E+ = up to 4 criterion description/points pairs
+**"Answers" sheet layout**: A = `[Q ID: …] Title` · B = full prompt · C = overall answer key · D = max points · E+ = up to 4 criterion description/points pairs
+
+### FetchResponses.gs (~190 lines)
+- `fetchQuizResponsesCore_(config, key)` - Rebuilds "Main Sheet"; rows already graded or commented on are kept unchanged, others are refreshed
+- `readRowsToPreserve_(...)` / `reapplyAIMarks_(...)` - Keep unreviewed-AI highlights attached to the right student when rows are re-sorted
 
 **"Main Sheet" layout**: Student Name (Sortable) · Canvas User ID · then, per question, Answer · Grade (/points) · Comment
 
 ---
 
-### GradingTools.gs (~510 lines)
-- `autoGradeWithClaude()` - Grade without rubric (answer key)
-- `generateAIComments()` - Feedback without rubric
-- `aiRubricGrade()` - Grade with rubric
-- `aiRubricComment()` - Feedback with rubric
-- `getGradingGenerosityLevel_(ui)` / `getIncludeAnswerKeyChoice_(ui, feedbackType)` - User prompts
-
-All four operations work question by question across all students, fill only empty cells, write each result as soon as it arrives, skip full-mark answers when commenting, and pause cleanly at the 5-minute mark (re-run to continue).
-
----
-
-### UploadData.gs (~150 lines)
-- `uploadEssayGradesToCanvas()` - Uploads non-blank numeric grades and non-blank comments from the active sheet to each student's latest quiz submission, then shows a success/failure/skipped summary
+### UploadData.gs (~160 lines)
+- `uploadEssayGradesToCanvas()` - Menu step 5: uploads non-blank numeric grades and non-blank comments from "Main Sheet" to each student's latest quiz submission, warning first if AI-written cells are still unreviewed
 
 ---
 
 ## 🔄 File Dependencies
 
 ```
-Constants.gs, Toast.gs                      (used everywhere)
+Constants.gs, Toast.gs                              (used everywhere)
 ConfigHelpers.gs → APIKeyHelpers.gs
-CanvasAPIHelpers.gs    ClaudeAPIHelpers.gs
+CanvasAPIHelpers.gs    ClaudeAPIHelpers.gs    AIHighlights.gs    AutoContinue.gs
 SheetProcessingHelpers.gs → AIOperationContext.gs
   ↓
-FetchData.gs, GradingTools.gs, UploadData.gs, SheetUtilities.gs (menus)
+FetchData.gs, FetchResponses.gs, AnswerKeyDrafts.gs, GradingTools.gs, UploadData.gs, SetupCheck.gs
+  ↓
+SheetUtilities.gs (menu), Sidebar.gs + Sidebar.html (Start Here panel)
 ```
 
-Apps Script loads all files into one global scope. Only top-level `const` declarations run at load time, so file order does not matter.
+Apps Script loads all files into one global scope, in no guaranteed order. Top-level `const` values must therefore be literals: never build one from another file's constant at load time (that's why `AI_OPERATIONS` reads settings and defaults inside functions).
 
 ---
 
 ## 🔧 Extending the Code
 
-1. **New AI operation**: add a public function to `GradingTools.gs`, start with `initializeAIOperationContext_()`, call a Claude helper (wrap any student text with `wrapStudentAnswer_()`), and add a menu item in `onOpen()`.
+1. **New AI operation**: add an entry to `AI_OPERATIONS` in `GradingTools.gs` (plan, settings, process), a public menu function and continuation handler, and a menu item in `onOpen()`. Wrap any student text with `wrapStudentAnswer_()`.
 2. **New Canvas integration**: add a helper to `CanvasAPIHelpers.gs` built on `fetchCanvasAPI_()`, and rethrow errors that have `isCanvasAuthError` so callers can run `handleCanvasAuthError_()`.
-3. **New setting**: add a default to `Constants.gs`, a row to the `settings` array in `setupSettingsSheet()`, and read it with `getSetting_()`.
+3. **New setting**: add a default to `Constants.gs`, an entry in `getSettingsDefinitions_()` (with `choices` for a dropdown), and read it with `getSetting_()`.
+4. **Background-safe code**: anything reachable from a continuation must use `notify_`/`confirm_`/`getUiOrNull_` instead of `SpreadsheetApp.getUi()`.
 
 ### Testing Changes
 1. Use a copy of the spreadsheet and a test course or a small quiz

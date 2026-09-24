@@ -118,10 +118,11 @@ Before starting, gather:
 
 ### Step 3: Verify Installation
 
-1. **Check for the menus**:
-   - Look for **Canvas Tools**, **Grading Tools**, and **Sheet Tools** in the menu bar
-   - If you don't see them, close the spreadsheet and reopen it
+1. **Check for the menu**:
+   - Look for **Grading with AI** in the menu bar
+   - If you don't see it, close the spreadsheet and reopen it
    - Or wait 30 seconds and refresh the page
+   - Choose **Grading with AI → Start Here** to open the step-by-step panel
 
 2. **Verify sheets**:
    - You should see three tabs at the bottom:
@@ -293,7 +294,7 @@ Whether you used the template or manual installation, you need to configure your
 
 2. **If using the template**: You'll see pre-filled rows. Update the **Value** column (Column B).
 
-3. **If manual installation**: Refresh the spreadsheet, then run **Sheet Tools → Setup/Verify "Settings" Sheet**. It creates every row below with defaults and descriptions.
+3. **If manual installation**: Refresh the spreadsheet, then run **Grading with AI → More Tools → Set Up Settings Sheet**. It creates the rows below with defaults, descriptions, and dropdowns.
 
 | Setting Name | Example Value | Your Value |
 |--------------|---------------|------------|
@@ -326,13 +327,11 @@ Whether you used the template or manual installation, you need to configure your
 
 ## First-Time Authorization
 
-When you first use any AI grading feature, you'll need to authorize the script and enter your API keys.
+The first time you use the menu, Google asks you to authorize the script.
 
 ### Step 1: Grant Script Permissions
 
-1. **Trigger authorization**:
-   - Click **Canvas Tools** in the menu
-   - Select any option (e.g., "Fetch Question Prompts to 'Answers' Sheet")
+1. **Trigger authorization**: click **Grading with AI → Check Setup** (or any other item)
 
 2. **Authorization dialog appears**:
    - You'll see: "Authorization Required"
@@ -349,84 +348,49 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - It's safe to proceed
 
 5. **Review and allow**:
-   - Review the permissions requested
+   - The script asks to view and manage this spreadsheet, connect to external services (Canvas and Anthropic), display dialogs and the side panel, and **run when you're not present** (used only to continue long grading runs in the background)
    - Click **Allow**
 
-✅ **Done!** You only need to do this once per spreadsheet.
+✅ **Done!** You only need to do this once per spreadsheet. (If you update the code later and it needs a new permission, Google asks again.)
 
-### Step 2: Enter API Keys
+### Step 2: Save Your API Keys
 
-#### Canvas API Token
-1. Click **Canvas AI Grading** → **Fetch Data** → **Fetch Question Prompts**
-2. You'll be prompted to enter Canvas API Token
-3. Paste your Canvas token
-4. Click **OK**
+Paste your Canvas token into the `CANVAS_API_KEY` row and your Claude key into the `CLAUDE_API_KEY` row of the Settings tab. The first time the script uses them, it moves them into Script Properties and replaces the cells with `•••••`.
 
-#### Claude API Key
-1. Click **Canvas AI Grading** → **AI Grading** → **Auto-Grade with Claude**
-2. You'll be prompted to enter Claude API Key
-3. Paste your Claude key
-4. Click **OK**
-
-**Security Note**: These keys are stored in Script Properties, not visible in the spreadsheet.
+If you'd rather not paste them into the sheet, leave those rows empty: you'll be prompted for each key the first time it's needed.
 
 ---
 
 ## Testing Your Installation
 
-### Test 1: Fetch Question Prompts
+The quickest test is the **Start Here** panel (**Grading with AI → Start Here**): work through its steps top to bottom. The checklist turns green as each step is done.
 
-1. Click **Canvas Tools** → **Fetch Question Prompts to "Answers" Sheet**
-2. Enter your Canvas API token when prompted (first time only)
-3. Wait for processing
-4. Check the **Answers** sheet - it should populate with:
-   - Column A: Question ID & Title (from Canvas)
-   - Column B: Full Question Prompt (from Canvas)
-   - Column C: Overall Answer Key (empty - for you to fill in)
-   - Column D: Max Points (from Canvas)
-   - Columns E+: Rubric Criteria (if rubrics are used in Canvas)
+### Test 1: Check Setup
 
-✅ **Success**: Questions appear in Answers sheet  
-❌ **Failed**: See Troubleshooting section
+Click **Check Setup**. Every line should show ✅:
+- Canvas settings, Canvas API key, and Quiz (with the number of essay questions)
+- Claude API key, Grading model, and Feedback model
 
-### Test 2: Add Manual Answer Key
+Anything marked ❌ comes with a plain-language explanation of what to fix.
 
-1. Go to **Answers** sheet
-2. In Column C (Overall Answer Key), add an ideal answer for one question
-3. This is what Claude will grade against
+### Test 2: Fetch from Canvas
 
-### Test 3: Fetch Student Submissions
+1. Click **1. Fetch from Canvas**
+2. Check the **Answers** sheet: one row per essay question (title, prompt, and max points; Column C and Columns E+ are yours to fill)
+3. Check **Main Sheet**: one row per student, with Answer, Grade, and Comment columns for each question
 
-1. Return to main data sheet
-2. Click **Canvas Tools** → **Fetch Essay Quiz Responses (Main Sheet)**
-3. Wait for processing
-4. Student data should populate with:
-   - Student Name (Sortable)
-   - Canvas User ID
-   - Question columns with student answers
-   - Grade columns (empty)
-   - Comment columns (empty)
+### Test 3: Add an Answer Key
 
-✅ **Success**: Student names and answers appear  
-❌ **Failed**: See Troubleshooting section
+Type an answer key into Column C of the Answers sheet for at least one question, or click **2. Draft Answer Keys with AI** and review the highlighted drafts.
 
-### Test 4: Grade One Question with AI
+### Test 4: Grade
 
-1. Ensure you have:
-   - Answer key in Answers sheet (Column C)
-   - Student submission in main sheet
-   - Empty grade cell for a student
+1. Click **3. Grade Answers**
+2. The confirmation shows how many answers will be graded, the model, and the generosity level
+3. Click **Yes** and watch the grades appear, highlighted in light purple until you review them
 
-2. Click **Grading Tools** → **Grade without Rubric (using Claude.ai)**
-3. Enter your Claude API key when prompted (first time only)
-4. Select generosity level:
-   - Try "3" for Normal/Balanced (default)
-   - Range: 1 (Very Strict) to 5 (Very Generous)
-5. Confirm the operation
-6. Wait for processing - you'll see toast notifications showing progress
-
-✅ **Success**: Grade appears in the grade column  
-❌ **Failed**: Check API keys and see Troubleshooting
+✅ **Success**: Grades appear in the grade columns
+❌ **Failed**: Run **Check Setup** and see Troubleshooting
 
 ---
 
@@ -434,7 +398,7 @@ When you first use any AI grading feature, you'll need to authorize the script a
 
 ### Menu Not Appearing
 
-**Problem**: Canvas Tools, Grading Tools, and Sheet Tools menus don't show up
+**Problem**: The **Grading with AI** menu doesn't show up
 
 **Solutions**:
 1. Wait 30 seconds and refresh the page
@@ -442,7 +406,7 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - Open Extensions → Apps Script
    - Click the ▶ (Run) icon next to any function
    - Check for errors in the execution log
-3. Ensure all 12 `.gs` files are added
+3. Ensure all `.gs` files and `Sidebar.html` from the `src/` folder are added
 4. Try a hard refresh: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)
 5. Check the `onOpen()` function in SheetUtilities.gs is present
 
@@ -466,16 +430,15 @@ When you first use any AI grading feature, you'll need to authorize the script a
 2. Check token hasn't expired
 3. Ensure Canvas URL is correct (no trailing slash)
 4. Verify Course ID and Assignment ID are correct
-5. Re-enter API key:
-   - Apps Script → Run → Delete `CANVAS_API_KEY` from Script Properties
-   - Retry operation to re-enter token
+5. Run **Check Setup**: it tells you whether the problem is the URL, the course, the quiz, or the token
+6. Replace the token: **Grading with AI → More Tools → Reset Canvas API Key**, then paste the new one into Settings
 
 ### Claude API Errors
 
 **Problem**: "Claude API Error" or rate limiting
 
 **Solutions**:
-1. Verify Claude API key is correct
+1. Run **Check Setup**: it confirms whether the key works and whether both model IDs exist
 2. Check billing is set up in Anthropic Console
 3. Ensure you have credits/balance
 4. If rate limited, wait and retry
@@ -502,7 +465,17 @@ When you first use any AI grading feature, you'll need to authorize the script a
    - Extensions → Apps Script
    - Click **Executions** (clock icon)
    - Review recent runs for errors
-4. Ensure generosity level was selected
+4. Look at the confirmation before grading: its "Skipped" list names questions with no answer key or missing points
+
+### Background Continuation Didn't Resume
+
+**Problem**: A long run said it would continue in the background, but nothing happened
+
+**Solutions**:
+1. Open **Start Here**: the banner shows the latest status (running, continuing, paused, or stopped) and why
+2. Check **Extensions → Apps Script → Executions** for a `continueGradeAnswers` or `continueWriteFeedback` run and its error
+3. If you declined the "run when you're not present" permission, just run the step again: finished cells are skipped
+4. Continuation stops on its own after about 20 background runs, or if a run makes no progress, so it can't loop forever
 
 ### Data Mismatch
 
