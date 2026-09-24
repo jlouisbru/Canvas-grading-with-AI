@@ -267,7 +267,7 @@ If you find this tool helpful, please:
 
 ## 📊 Changelog
 
-### v1.1.0 (2026-09-23)
+### v1.1.0 (2026-09-24)
 - **Easier workflow**: One **Grading with AI** menu with numbered steps, and a **Start Here** panel with a live checklist and a button for each step
 - **Check Setup**: tests Canvas settings, both API keys, the quiz, and the chosen models, and explains what to fix (no cost)
 - **AI-drafted answer keys**: step 2 drafts answer keys and optional rubric criteria from the question text, for you to review
