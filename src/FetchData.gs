@@ -160,10 +160,10 @@ function fetchAndPopulateQuestionPrompts() {
   }
 }
 
-// fetchAndPopulateQuizResponses needs to call a modified writeToSheet_
-// (or a new version of it) to handle the +8px padding.
-// We will modify the existing writeToSheet_ in SheetProcessingHelpers.gs for this.
-// The call within fetchAndPopulateQuizResponses will then need to indicate this special handling.
+/**
+ * Fetches essay quiz responses, grades, and comments from Canvas into "Main Sheet".
+ * Rows that are fully graded or already have comments are preserved; others are refreshed from Canvas.
+ */
 function fetchAndPopulateQuizResponses() {
   const ui = SpreadsheetApp.getUi();
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -250,6 +250,7 @@ function fetchAndPopulateQuizResponses() {
     const { userIdColIndex: sheetUserIdColIndexForRead, questionColumnsMap } = mainSheetHeaderInfo;
 
     const fullyPopulatedStudentRows = new Map();
+    const existingSheetUserIds = new Set();
     const mainSheetLastRow = mainSheet.getLastRow();
 
     if (sheetUserIdColIndexForRead !== -1 && mainSheetLastRow >= 2) {
@@ -257,6 +258,7 @@ function fetchAndPopulateQuizResponses() {
       existingStudentDataValues.forEach(rowValues => {
         const userId = (rowValues.length > sheetUserIdColIndexForRead && rowValues[sheetUserIdColIndexForRead]) ? String(rowValues[sheetUserIdColIndexForRead]).trim() : null;
         if (userId) {
+          existingSheetUserIds.add(userId);
           let isRowCompleteForFetching = orderedQuestionIds.length > 0;
           for (const qId of orderedQuestionIds) {
             const qCols = questionColumnsMap.get(qId);
@@ -345,12 +347,7 @@ function fetchAndPopulateQuizResponses() {
             row.push(answerInfo?.comment ?? "");
           });
           finalSheetData.push(row);
-          let wasOnSheet = false;
-          if (sheetUserIdColIndexForRead !== -1 && mainSheetLastRow >=2) {
-             const existingStudentIdValues = mainSheet.getRange(2, sheetUserIdColIndexForRead + 1, mainSheetLastRow - 1, 1).getValues();
-             wasOnSheet = existingStudentIdValues.some(r => (r[0]) ? String(r[0]).trim() === userId : false);
-          }
-          if (wasOnSheet) updatedCount++;
+          if (existingSheetUserIds.has(userId)) updatedCount++;
           else newCount++;
         } else {
           Logger.log(`Student ID ${userId} not in current Canvas roster. Skipping.`);

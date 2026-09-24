@@ -27,7 +27,7 @@ function onOpen() {
   ui.createMenu('Sheet Tools')
     .addItem('Clear Grades/Comments on Main Sheet', 'clearGradesAndOrComments')
     .addSeparator()
-    .addItem('Setup/Verify "Settings" Sheet', 'setupSettingsSheet_')
+    .addItem('Setup/Verify "Settings" Sheet', 'setupSettingsSheet')
     .addSeparator()
     .addItem('Reset Claude API Key', 'resetClaudeApiKey')
     .addItem('Reset Canvas API Key', 'resetCanvasApiKey')
@@ -36,10 +36,9 @@ function onOpen() {
 
 /**
  * Creates or verifies the "Settings" sheet with default values.
- * This function is also a menu item.
- * @private
+ * This function is also a menu item, so it must stay public (no trailing underscore).
  */
-function setupSettingsSheet_() {
+function setupSettingsSheet() {
   const ui = SpreadsheetApp.getUi();
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheetName = "Settings";
@@ -47,12 +46,13 @@ function setupSettingsSheet_() {
 
   const settings = [
     ["CANVAS_COURSE_URL", "", "Paste your Canvas course URL here (e.g., https://canvas.yourinstitution.edu/courses/12345). If set, CANVAS_BASE_URL and COURSE_ID are ignored."],
-    ["ASSIGNMENT_ID", "", "Enter the Assignment ID, Quiz ID, or paste the full quiz/assignment URL. Accepted formats: .../quizzes/XXXXXX or ...?assignment_id=XXXXXX. The code will detect which type it is automatically."],
+    ["ASSIGNMENT_ID", "", "Enter the Assignment ID, Quiz ID, or paste the full quiz/assignment URL. Accepted formats: a plain ID, .../quizzes/XXXXXX, .../assignments/XXXXXX, or ...?assignment_id=XXXXXX. The code will detect which type it is automatically."],
     ["COURSE_ID", "", "Optional if CANVAS_COURSE_URL is set. Otherwise, enter the Canvas Course ID here."],
     ["CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL, "Optional if CANVAS_COURSE_URL is set. Otherwise, the base URL of your Canvas instance (e.g., https://canvas.yourinstitution.edu)."],
     ["CLAUDE_API_ENDPOINT", DEFAULT_CLAUDE_API_ENDPOINT, "The API endpoint for Claude Messages API."],
-    ["CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL, "Claude model for auto-grading (e.g., claude-haiku-4-5-20251001)."],
-    ["CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL, "Claude model for generating comments (e.g., claude-haiku-4-5-20251001)."],
+    ["CLAUDE_GRADING_MODEL", DEFAULT_CLAUDE_GRADING_MODEL, "Claude model for auto-grading: claude-opus-5 (highest quality), claude-sonnet-5 (balanced), or claude-haiku-4-5-20251001 (fastest, lowest cost)."],
+    ["CLAUDE_COMMENTING_MODEL", DEFAULT_CLAUDE_COMMENTING_MODEL, "Claude model for generating comments: claude-opus-5 (highest quality), claude-sonnet-5 (balanced), or claude-haiku-4-5-20251001 (fastest, lowest cost)."],
+    ["CLAUDE_EFFORT", "", "Optional: how much the model thinks before answering (low, medium, high, xhigh, max). Blank = high. Lower is faster and cheaper. Applies to Opus and Sonnet models; ignored for Haiku."],
     ["CANVAS_API_KEY", "", "Paste your Canvas API Key here to save it. It will be stored securely in Script Properties and replaced with ••••• automatically."],
     ["CLAUDE_API_KEY", "", "Paste your Claude API Key here to save it. It will be stored securely in Script Properties and replaced with ••••• automatically."]
   ];

@@ -214,7 +214,8 @@ function writeToSheet_(sheet, sheetData, applyHeaderFitPlusPadding = false) {
 
 /**
  * Parses rubric data from the "Answers" sheet.
- * @returns {object|null} A map of question ID to rubric details, or null if "Answers" sheet not found.
+ * @returns {object<string, {prompt: string, overallKey: string, canvasMaxPoints: number, criteria: Array<{description: string, points: number}>}>|null}
+ *          A map of question ID to rubric details, or null if "Answers" sheet not found.
  * @private
  */
 function parseRubricDataFromAnswersSheet_() {
@@ -235,6 +236,7 @@ function parseRubricDataFromAnswersSheet_() {
     if (!qIdMatch?.[1]) continue;
     const qId = qIdMatch[1];
 
+    const prompt = String(row[1] || "").trim();
     const overallKey = String(row[2] || "").trim();
     const canvasMaxPointsStr = String(row[3] || "").trim();
     const canvasMaxPoints = canvasMaxPointsStr && !isNaN(parseFloat(canvasMaxPointsStr)) ? parseFloat(canvasMaxPointsStr) : 0;
@@ -261,9 +263,9 @@ function parseRubricDataFromAnswersSheet_() {
     }
 
     if (canvasMaxPoints > 0 || criteria.length > 0 ) {
-         rubricDataMap[qId] = { overallKey, canvasMaxPoints, criteria };
+         rubricDataMap[qId] = { prompt, overallKey, canvasMaxPoints, criteria };
     } else if (overallKey) {
-         rubricDataMap[qId] = { overallKey, canvasMaxPoints: 0, criteria: [] };
+         rubricDataMap[qId] = { prompt, overallKey, canvasMaxPoints: 0, criteria: [] };
     }
   }
   Logger.log(`Parsed rubric data for ${Object.keys(rubricDataMap).length} questions from "Answers" sheet.`);

@@ -47,6 +47,7 @@ function autoGradeWithClaude() {
     showToast_('AI Grading Aborted: No keys.', 'Error', 5);
     return;
   }
+  if (mainSheet.getLastRow() < 2) { showToast_('No student rows found.', 'Info', 5); return; }
 
   const generosityLevel = getGradingGenerosityLevel_(ui);
   if (generosityLevel === null) {
@@ -65,7 +66,6 @@ function autoGradeWithClaude() {
   const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
   const studentDataValues = dataRange.getValues(); // Read all data once to check existing grades
   const startTime = Date.now();
-  const MAX_RUNTIME_MS = 300000; // 5 min — leaves ~1 min buffer before GAS hard-kills at 6 min
   let timedOut = false;
   let gradesWritten = 0, errorsEncountered = 0;
 
@@ -73,9 +73,13 @@ function autoGradeWithClaude() {
   for (const [qId, qColInfo] of questionColumnsMap) {
     if (timedOut || abortDueToAuthError) break;
     const pointsPossible = qColInfo.points;
+    if (!(pointsPossible > 0)) {
+      Logger.log(`Skipping QID ${qId}: points possible is 0 or missing from its Grade column header.`);
+      continue;
+    }
 
     for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
+      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const studentRowValues = studentDataValues[i];
       const sheetRowNumber = i + 2;
@@ -194,7 +198,6 @@ function generateAIComments() {
   const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
 
   const startTime = Date.now();
-  const MAX_RUNTIME_MS = 300000;
   let timedOut = false;
   let commentsWritten = 0, errorsEncountered = 0;
   let abortDueToAuthError = false;
@@ -209,7 +212,7 @@ function generateAIComments() {
     const pointsPossible = qColInfo.points;
 
     for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
+      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const row = studentDataValues[i];
       const sheetRow = i + 2;
@@ -284,6 +287,7 @@ function aiRubricGrade() {
   if (!rubricDataMap || Object.keys(rubricDataMap).length === 0) {
     return; // Alert handled by initializer
   }
+  if (mainSheet.getLastRow() < 2) { showToast_('No student rows found.', 'Info', 5); return; }
 
   const generosityLevel = getGradingGenerosityLevel_(ui);
   if (generosityLevel === null) {
@@ -309,17 +313,16 @@ function aiRubricGrade() {
   const dataRange = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn());
   const studentDataValues = dataRange.getValues(); // Read all data once to check existing grades
   const startTime = Date.now();
-  const MAX_RUNTIME_MS = 300000;
   let timedOut = false;
   let gradesWritten = 0, errorsEncountered = 0;
 
   let abortDueToAuthError = false;
   for (const [qId, qColInfo] of questionColumnsMap) {
     if (timedOut || abortDueToAuthError) break;
-    const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
+    const questionText = rubricDataMap[qId]?.prompt || mainSheetHeaderValues[qColInfo.answerColIndex];
 
     for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
+      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const studentRowValues = studentDataValues[i];
       const sheetRowNumber = i + 2;
@@ -333,7 +336,7 @@ function aiRubricGrade() {
         if (rubricInfo?.canvasMaxPoints > 0) {
           showToast_(`AI Rubric Grade: QID ${qId} (Row ${sheetRowNumber}, Gen: ${generosityLevel})...`, 'Processing...', -1);
           Logger.log(`AI Rubric Grade: QID ${qId}, Row ${sheetRowNumber}. Max Points: ${rubricInfo.canvasMaxPoints}, Generosity: ${generosityLevel}`);
-          const apiResult = callClaudeAPIForRubricGrade_(questionHeaderText, String(studentAnswer), rubricInfo.canvasMaxPoints, rubricInfo.criteria, claudeApiKey, gradingModel, generosityLevel);
+          const apiResult = callClaudeAPIForRubricGrade_(questionText, String(studentAnswer), rubricInfo.canvasMaxPoints, rubricInfo.criteria, claudeApiKey, gradingModel, generosityLevel);
 
           if (apiResult.isAuthError) {
             abortDueToAuthError = true;
@@ -426,15 +429,14 @@ function aiRubricComment() {
   const studentDataValues = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
 
   const startTime = Date.now();
-  const MAX_RUNTIME_MS = 300000;
   let timedOut = false;
   let commentsWritten = 0, errorsEncountered = 0;
   let abortDueToAuthError = false;
 
   for (const [qId, qColInfo] of questionColumnsMap) {
     if (timedOut || abortDueToAuthError) break;
-    const questionHeaderText = mainSheetHeaderValues[qColInfo.answerColIndex];
     const rubricInfo = rubricDataMap[qId];
+    const questionText = rubricInfo?.prompt || mainSheetHeaderValues[qColInfo.answerColIndex];
 
     if (!rubricInfo || rubricInfo.canvasMaxPoints <= 0) {
       Logger.log(`No rubric data or valid max points for QID ${qId}. Skipping this question.`);
@@ -446,7 +448,7 @@ function aiRubricComment() {
     }
 
     for (let i = 0; i < studentDataValues.length; i++) {
-      if (Date.now() - startTime > MAX_RUNTIME_MS) { timedOut = true; break; }
+      if (Date.now() - startTime > MAX_AI_RUNTIME_MS) { timedOut = true; break; }
       if (abortDueToAuthError) break;
       const row = studentDataValues[i];
       const sheetRow = i + 2;
@@ -468,7 +470,7 @@ function aiRubricComment() {
       showToast_(`AI Rubric Comment: QID ${qId} for row ${sheetRow}...`, 'Processing...', -1);
       Logger.log(`AI rubric comment for QID ${qId}, row ${sheetRow}. Grade: ${studentGrade !== null ? studentGrade : 'ungraded'}/${rubricInfo.canvasMaxPoints}`);
       const apiResult = callClaudeAPIForRubricComment_(
-        questionHeaderText, String(studentAnswer), rubricInfo.overallKey,
+        questionText, String(studentAnswer), rubricInfo.overallKey,
         studentGrade, rubricInfo.canvasMaxPoints, rubricInfo.criteria,
         claudeApiKey, commentingModel, includeAnswerKey
       );

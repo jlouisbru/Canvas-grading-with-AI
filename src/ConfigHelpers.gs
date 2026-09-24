@@ -79,11 +79,14 @@ function getConfigFromSheet_() {
       assignmentId = quizIdFromUrl;
       Logger.log(`ASSIGNMENT_ID is a quiz URL. Extracted Quiz ID: ${quizIdFromUrl}`);
     } else {
-      const assignmentUrlMatch = assignmentIdRaw.match(/[?&]assignment_id=(\d+)/i);
+      const assignmentUrlMatch = assignmentIdRaw.match(/[?&]assignment_id=(\d+)/i) || assignmentIdRaw.match(/\/assignments\/(\d+)/i);
       if (assignmentUrlMatch) {
         assignmentId = assignmentUrlMatch[1];
         Logger.log(`ASSIGNMENT_ID is an assignment URL. Extracted Assignment ID: ${assignmentId}`);
       }
+    }
+    if (!/^\d+$/.test(assignmentId)) {
+      throw new Error(`ASSIGNMENT_ID "${assignmentIdRaw}" is not a numeric ID or a recognized Canvas quiz/assignment URL.`);
     }
 
     // Resolve course ID and base URL — try each source in priority order.
