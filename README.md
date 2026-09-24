@@ -69,7 +69,7 @@ The following settings are already configured with defaults (you can customize i
 - **CLAUDE_API_ENDPOINT**: `https://api.anthropic.com/v1/messages`
 - **CLAUDE_GRADING_MODEL**: `claude-sonnet-5` (dropdown: Sonnet 5, Opus 5, or Haiku 4.5)
 - **CLAUDE_COMMENTING_MODEL**: `claude-sonnet-5` (same choices)
-- **CLAUDE_EFFORT**: blank (= `high`). Set `medium` or `low` for faster, cheaper runs
+- **CLAUDE_EFFORT**: `high` (dropdown: low, medium, high, xhigh, max; blank also means `high`). Choose `medium` or `low` for faster, cheaper runs
 
 See [Changing AI Models](SETUP.md#changing-ai-models) to trade quality for cost (Opus 5 for the highest quality, Haiku 4.5 for the lowest cost).
 
